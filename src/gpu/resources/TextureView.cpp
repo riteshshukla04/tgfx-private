@@ -133,7 +133,11 @@ std::shared_ptr<TextureView> TextureView::MakeFrom(Context* context,
     return nullptr;
   }
   TextureView* textureView = nullptr;
-  if (info.format == HardwareBufferFormat::YCBCR_420_SP) {
+  // A backend may import a YUV buffer as one external texture that samples the
+  // planes in hardware (OpenGL ES does) instead of one texture per plane. Only
+  // build a planar view when it actually returned planes.
+  if (info.format == HardwareBufferFormat::YCBCR_420_SP &&
+      textures.size() == YUVData::NV12_PLANE_COUNT) {
     textureView = new YUVTextureView(std::move(textures), YUVFormat::NV12, colorSpace);
   } else {
     textureView = new DefaultTextureView(std::move(textures.front()));
