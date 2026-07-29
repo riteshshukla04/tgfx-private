@@ -19,6 +19,8 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include <vector>
 #include "tgfx/core/BlendMode.h"
 #include "tgfx/core/Color.h"
 #include "tgfx/core/ColorFilter.h"
@@ -29,6 +31,24 @@
 #include "tgfx/core/TileMode.h"
 
 namespace tgfx {
+/**
+ * A uniform for a runtime shader: a name and 1-4 float components.
+ */
+struct RuntimeShaderUniform {
+  std::string name;
+  std::vector<float> values;
+};
+
+/**
+ * Source for a runtime shader. `body` is GLSL that must assign the fragment
+ * result to `tgfx_runtime_color`, and may read `fragCoord` (local coordinates)
+ * and any declared uniform by name. On Metal the GLSL is cross-compiled to MSL.
+ */
+struct RuntimeShaderSource {
+  std::string body;
+  std::vector<RuntimeShaderUniform> uniforms;
+};
+
 class FragmentProcessor;
 
 /**
@@ -137,6 +157,13 @@ class Shader {
    * @param tileSize        If non-null and non-empty, the noise will tile seamlessly with the given
    *                        size.
    */
+  /**
+   * Returns a shader that runs the given source for every fragment. Returns
+   * nullptr if the source is empty.
+   */
+  static std::shared_ptr<Shader> MakeRuntimeShader(std::string body,
+                                                   std::vector<RuntimeShaderUniform> uniforms = {});
+
   static std::shared_ptr<Shader> MakeFractalNoise(float baseFrequencyX, float baseFrequencyY,
                                                   int numOctaves, float seed,
                                                   const ISize* tileSize = nullptr);
@@ -196,7 +223,7 @@ class Shader {
   std::shared_ptr<Shader> makeWithColorFilter(std::shared_ptr<ColorFilter> colorFilter) const;
 
  protected:
-  enum class Type { Color, ColorFilter, Image, Blend, Matrix, Gradient, PerlinNoise };
+  enum class Type { Color, ColorFilter, Image, Blend, Matrix, Gradient, PerlinNoise, Runtime };
 
   /**
    * Returns the type of this shader.
