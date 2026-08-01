@@ -40,14 +40,17 @@ void UniformData::setBuffer(void* buffer) {
   _buffer = static_cast<uint8_t*>(buffer);
 }
 
-void UniformData::onSetData(const std::string& name, const void* data, size_t size) const {
+void UniformData::onSetData(std::string_view name, const void* data, size_t size) const {
   DEBUG_ASSERT(_buffer != nullptr);
 
-  const auto& key = name + nameSuffix;
-  auto field = findField(key);
+  // Reused across calls so composing the mangled key does not allocate per draw op.
+  keyBuffer.assign(name);
+  keyBuffer.append(nameSuffix);
+  auto field = findField(keyBuffer);
 
   if (field == nullptr) {
-    LOGE("UniformData::onSetData() uniform '%s' not found!", name.c_str());
+    LOGE("UniformData::onSetData() uniform '%.*s' not found!", static_cast<int>(name.size()),
+         name.data());
     return;
   }
   DEBUG_ASSERT(field->size == size);
