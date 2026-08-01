@@ -20,6 +20,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 #include "gpu/Uniform.h"
@@ -52,7 +53,7 @@ class UniformData {
                        !std::is_same_v<std::decay_t<T>, Matrix> &&
                        !std::is_same_v<std::decay_t<T>, ColorMatrix33>,
                    void>
-  setData(const std::string& name, const T& value) const {
+  setData(std::string_view name, const T& value) const {
     onSetData(name, &value, sizeof(value));
   }
 
@@ -60,8 +61,8 @@ class UniformData {
    * Convenience method for copying a Matrix to a 3x3 matrix in column-major order.
    */
   template <typename T>
-  std::enable_if_t<std::is_same_v<std::decay_t<T>, Matrix>, void> setData(const std::string& name,
-                                                                          const T& matrix) const {
+  std::enable_if_t<std::is_same_v<std::decay_t<T>, Matrix>, void> setData(std::string_view name,
+                                                                         const T& matrix) const {
     float values[9] = {};
     matrix.get9(values);
 
@@ -77,7 +78,7 @@ class UniformData {
 
   template <typename T>
   std::enable_if_t<std::is_same_v<std::decay_t<T>, ColorMatrix33>, void> setData(
-      const std::string& name, const T& matrix) const {
+      std::string_view name, const T& matrix) const {
 
     // clang-format off
       const float data[] = {
@@ -128,12 +129,13 @@ class UniformData {
   size_t bufferSize = 0;
   std::vector<Uniform> _uniforms = {};
   std::string nameSuffix = "";
+  mutable std::string keyBuffer = {};
   std::unordered_map<std::string, Field> fieldMap = {};
   size_t cursor = 0;
 
   explicit UniformData(std::vector<Uniform> uniforms);
 
-  void onSetData(const std::string& name, const void* data, size_t size) const;
+  void onSetData(std::string_view name, const void* data, size_t size) const;
 
   const Field* findField(const std::string& key) const;
 
