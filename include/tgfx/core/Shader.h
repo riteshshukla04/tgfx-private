@@ -31,6 +31,8 @@
 #include "tgfx/core/TileMode.h"
 
 namespace tgfx {
+class Shader;
+
 /**
  * A uniform for a runtime shader: a name and 1-4 float components.
  */
@@ -58,6 +60,12 @@ struct RuntimeShaderSource {
    * declare a helper of the same name.
    */
   std::vector<std::string> functionNames;
+  /**
+   * The `uniform shader` children, in declaration order. `body` samples child i
+   * by calling TGFX_CHILD_<i>(coord), where coord is in the runtime shader's own
+   * local space — the same space `fragCoord` is in.
+   */
+  std::vector<std::shared_ptr<Shader>> children;
 };
 
 class FragmentProcessor;
@@ -173,8 +181,9 @@ class Shader {
    * nullptr if the source is empty.
    */
   static std::shared_ptr<Shader> MakeRuntimeShader(
-      std::string body, std::vector<RuntimeShaderUniform> uniforms = {},
-      std::string preamble = {}, std::vector<std::string> functionNames = {});
+      std::string body, std::vector<RuntimeShaderUniform> uniforms = {}, std::string preamble = {},
+      std::vector<std::string> functionNames = {},
+      std::vector<std::shared_ptr<Shader>> children = {});
 
   static std::shared_ptr<Shader> MakeFractalNoise(float baseFrequencyX, float baseFrequencyY,
                                                   int numOctaves, float seed,

@@ -5,17 +5,30 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "GLSLRuntimeShaderProcessor.h"
-
 #include <array>
 #include <cctype>
+#include <string>
 
 namespace tgfx {
 PlacementPtr<RuntimeShaderProcessor> RuntimeShaderProcessor::Make(
-    BlockAllocator* allocator, Matrix matrix, std::shared_ptr<RuntimeShaderSource> source) {
+    const FPArgs& args, const Matrix* uvMatrix, std::shared_ptr<RuntimeShaderSource> source,
+    const std::shared_ptr<ColorSpace>& dstColorSpace) {
   if (source == nullptr) {
     return nullptr;
   }
-  return allocator->make<GLSLRuntimeShaderProcessor>(matrix, std::move(source));
+  auto processor = args.context->drawingAllocator()->make<GLSLRuntimeShaderProcessor>(
+      uvMatrix ? *uvMatrix : Matrix::I(), source);
+  // Registered straight onto the processor, after its coord transform as
+  // registerChildProcessor() requires, so no intermediate vector is allocated on
+  // the draw path.
+  for (const auto& child : source->children) {
+    auto childProcessor = FragmentProcessor::Make(child, args, uvMatrix, dstColorSpace);
+    if (childProcessor == nullptr) {
+      return nullptr;
+    }
+    processor->registerChildProcessor(std::move(childProcessor));
+  }
+  return processor;
 }
 
 GLSLRuntimeShaderProcessor::GLSLRuntimeShaderProcessor(Matrix matrix,
@@ -72,6 +85,27 @@ static void RenameIdentifier(std::string* text, const std::string& from, const s
   }
 }
 
+/// The mat3 mapping a coordinate in the runtime shader's local space into the
+/// space child `index` samples in. One per child, uploaded by onSetData.
+static std::string ChildMatrixName(size_t index) {
+  return "ChildMatrix" + std::to_string(index);
+}
+
+/// The first coord transform in `processor`'s subtree, in pre-order: the one
+/// mapping local coordinates into the space the child samples in. Null when the
+/// child reads no coordinates at all, where the matrix goes unused.
+static const CoordTransform* FirstCoordTransform(const FragmentProcessor* processor) {
+  if (processor->numCoordTransforms() > 0) {
+    return processor->coordTransform(0);
+  }
+  for (size_t i = 0; i < processor->numChildProcessors(); i++) {
+    if (auto* found = FirstCoordTransform(processor->childProcessor(i))) {
+      return found;
+    }
+  }
+  return nullptr;
+}
+
 void GLSLRuntimeShaderProcessor::emitCode(EmitArgs& args) const {
   auto fragBuilder = args.fragBuilder;
   auto uniformHandler = args.uniformHandler;
@@ -93,14 +127,36 @@ void GLSLRuntimeShaderProcessor::emitCode(EmitArgs& args) const {
     RenameIdentifier(&preamble, name, mangled);
     RenameIdentifier(&body, name, mangled);
   }
+  // One wrapper per child, emitted ahead of the preamble and the entry point so
+  // both may call it. The child's own code goes in the wrapper's body: GLSL ES
+  // has no nested functions, and `child.eval(coord)` may appear anywhere.
+  for (size_t i = 0; i < numChildProcessors(); i++) {
+    auto matrixName = uniformHandler->addUniform(ChildMatrixName(i), UniformFormat::Float3x3,
+                                                 ShaderStage::Fragment);
+    auto childName = fragBuilder->getMangledFunctionName("tgfxChild");
+    std::string childColor = "tgfxChildColor";
+    auto mark = fragBuilder->codeMark();
+    emitChild(i, &childColor, args, [](std::string_view) { return std::string("tgfxChildCoord"); });
+    auto emitted = fragBuilder->takeCodeSince(mark);
+    std::string wrapper = "vec4 " + childName + "(highp vec2 tgfxLocalCoord) {\n";
+    wrapper +=
+        "highp vec3 tgfxChildHomogeneous = " + matrixName + " * vec3(tgfxLocalCoord, 1.0);\n";
+    wrapper += "highp vec2 tgfxChildCoord = tgfxChildHomogeneous.xy / tgfxChildHomogeneous.z;\n";
+    wrapper += emitted;
+    wrapper += "return " + childColor + ";\n}";
+    fragBuilder->addFunction(wrapper);
+    auto placeholder = "TGFX_CHILD_" + std::to_string(i);
+    RenameIdentifier(&preamble, placeholder, childName);
+    RenameIdentifier(&body, placeholder, childName);
+  }
   if (!preamble.empty()) {
     fragBuilder->addFunction(preamble);
   }
   std::string function = "vec4 " + functionName + "(vec2 fragCoord) {\n";
   for (size_t i = 0; i < names.size(); i++) {
     const auto& uniform = source->uniforms[i];
-    function += std::string(TypeOf(uniform.values.size())) + " " + uniform.name + " = " + names[i] +
-                ";\n";
+    function +=
+        std::string(TypeOf(uniform.values.size())) + " " + uniform.name + " = " + names[i] + ";\n";
   }
   function += body + "\n}";
   fragBuilder->addFunction(function);
@@ -110,6 +166,22 @@ void GLSLRuntimeShaderProcessor::emitCode(EmitArgs& args) const {
 }
 
 void GLSLRuntimeShaderProcessor::onSetData(UniformData*, UniformData* fragmentUniformData) const {
+  if (auto childCount = numChildProcessors(); childCount > 0) {
+    // A child was built against the same uvMatrix as this processor, so what
+    // maps one coordinate space to the other is whatever the child added on top
+    // — its own local matrix and, for a texture, the normalisation only known
+    // once the texture is resolved. Hence a uniform rather than a constant.
+    Matrix fromLocal = Matrix::I();
+    if (!coordTransform.getTotalMatrix().invert(&fromLocal)) {
+      fromLocal = Matrix::I();
+    }
+    for (size_t i = 0; i < childCount; i++) {
+      auto* transform = FirstCoordTransform(childProcessor(i));
+      auto matrix = transform != nullptr ? transform->getTotalMatrix() : Matrix::I();
+      matrix.preConcat(fromLocal);
+      fragmentUniformData->setData(ChildMatrixName(i), matrix);
+    }
+  }
   for (const auto& uniform : source->uniforms) {
     switch (uniform.values.size()) {
       case 2:
