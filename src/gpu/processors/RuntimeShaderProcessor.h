@@ -14,8 +14,14 @@
 namespace tgfx {
 class RuntimeShaderProcessor : public FragmentProcessor {
  public:
-  static PlacementPtr<RuntimeShaderProcessor> Make(BlockAllocator* allocator, Matrix matrix,
-                                                   std::shared_ptr<RuntimeShaderSource> source);
+  /// Builds and registers one child processor per `source->children`, against
+  /// the same uvMatrix this processor gets, so the two coordinate spaces differ
+  /// only by what the child itself adds. Returns nullptr if a child cannot be
+  /// built: its wrapper function would be missing and the program would not
+  /// compile.
+  static PlacementPtr<RuntimeShaderProcessor> Make(
+      const FPArgs& args, const Matrix* uvMatrix, std::shared_ptr<RuntimeShaderSource> source,
+      const std::shared_ptr<ColorSpace>& dstColorSpace);
 
   std::string name() const override {
     return "RuntimeShaderProcessor";

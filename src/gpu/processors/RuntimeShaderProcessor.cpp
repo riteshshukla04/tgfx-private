@@ -24,6 +24,8 @@ void RuntimeShaderProcessor::onComputeProcessorKey(BytesKey* bytesKey) const {
     bytesKey->write(static_cast<uint32_t>(std::hash<std::string>{}(name)));
   }
   bytesKey->write(static_cast<uint32_t>(source->functionNames.size()));
+  // One wrapper function is emitted per child, so the count shapes the program.
+  bytesKey->write(static_cast<uint32_t>(numChildProcessors()));
   bytesKey->write(static_cast<uint32_t>(source->uniforms.size()));
   for (const auto& uniform : source->uniforms) {
     bytesKey->write(static_cast<uint32_t>(std::hash<std::string>{}(uniform.name)));

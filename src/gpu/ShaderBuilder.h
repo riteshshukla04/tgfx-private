@@ -69,6 +69,20 @@ class ShaderBuilder {
 
   void addFunction(const std::string& str);
 
+  /**
+   * The current end of the code section, for takeCodeSince().
+   */
+  size_t codeMark() const;
+
+  /**
+   * Removes and returns everything appended to the code section since `mark`.
+   * Lets a processor lift statements a child emitted into a file-scope function,
+   * which is what a runtime shader's `child.eval(coord)` needs: the child is
+   * emitted once, as the body of a function the author's source may call from
+   * anywhere. GLSL ES has no nested functions, so there is no other way.
+   */
+  std::string takeCodeSince(size_t mark);
+
   std::string getMangledFunctionName(const char* baseName);
 
   /**

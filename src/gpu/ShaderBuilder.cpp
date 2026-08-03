@@ -81,6 +81,21 @@ void ShaderBuilder::addFunction(const std::string& str) {
   shaderStrings[Type::Functions] += str;
 }
 
+size_t ShaderBuilder::codeMark() const {
+  return shaderStrings[Type::Code].size();
+}
+
+std::string ShaderBuilder::takeCodeSince(size_t mark) {
+  auto& code = shaderStrings[Type::Code];
+  if (mark >= code.size()) {
+    return "";
+  }
+  auto taken = code.substr(mark);
+  code.resize(mark);
+  atLineStart = code.empty() || code[code.size() - 1] == '\n';
+  return taken;
+}
+
 std::string ShaderBuilder::getMangledFunctionName(const char* baseName) {
   return programBuilder->nameVariable(baseName);
 }

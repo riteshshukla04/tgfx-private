@@ -142,7 +142,13 @@ void GLSLTextureEffect::emitYUVTextureCode(EmitArgs& args) const {
   auto uniformHandler = args.uniformHandler;
   auto yuvTexture = getYUVTexture();
   auto& textureSamplers = *args.textureSamplers;
-  const auto texCoordName = fragBuilder->emitPerspTextCoord((*args.transformedCoords)[0]);
+  auto texCoordName = fragBuilder->emitPerspTextCoord((*args.transformedCoords)[0]);
+  // As the RGBA path does. Without this a parent sampling a YUV texture at an
+  // explicit coordinate — a runtime shader's child.eval(), a camera frame — gets
+  // the fragment's own coordinate instead, silently.
+  if (args.coordFunc) {
+    texCoordName = args.coordFunc(texCoordName);
+  }
   std::string subsetName = "";
   if (needSubset()) {
     subsetName = uniformHandler->addUniform("Subset", UniformFormat::Float4, ShaderStage::Fragment);
