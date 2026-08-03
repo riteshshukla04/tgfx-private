@@ -133,7 +133,10 @@ void GLSLRuntimeShaderProcessor::emitCode(EmitArgs& args) const {
   for (size_t i = 0; i < numChildProcessors(); i++) {
     auto matrixName = uniformHandler->addUniform(ChildMatrixName(i), UniformFormat::Float3x3,
                                                  ShaderStage::Fragment);
-    auto childName = fragBuilder->getMangledFunctionName("tgfxChild");
+    // The index belongs in the base name: nameVariable() mangles per processor,
+    // not per call, so every child of one processor would otherwise be handed
+    // the same name and the second wrapper would redefine the first.
+    auto childName = fragBuilder->getMangledFunctionName(("tgfxChild" + std::to_string(i)).c_str());
     std::string childColor = "tgfxChildColor";
     auto mark = fragBuilder->codeMark();
     emitChild(i, &childColor, args, [](std::string_view) { return std::string("tgfxChildCoord"); });
