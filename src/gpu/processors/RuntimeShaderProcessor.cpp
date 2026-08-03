@@ -16,8 +16,14 @@ RuntimeShaderProcessor::RuntimeShaderProcessor(Matrix matrix,
 void RuntimeShaderProcessor::onComputeProcessorKey(BytesKey* bytesKey) const {
   // Two different shader sources must never share a compiled program.
   bytesKey->write(static_cast<uint32_t>(std::hash<std::string>{}(source->body)));
-  // Two bodies can be identical while their helpers differ.
+  // Two bodies can be identical while their helpers differ. functionNames only
+  // renames what the preamble already contains, but nothing here enforces that,
+  // so it is keyed rather than assumed.
   bytesKey->write(static_cast<uint32_t>(std::hash<std::string>{}(source->preamble)));
+  for (const auto& name : source->functionNames) {
+    bytesKey->write(static_cast<uint32_t>(std::hash<std::string>{}(name)));
+  }
+  bytesKey->write(static_cast<uint32_t>(source->functionNames.size()));
   bytesKey->write(static_cast<uint32_t>(source->uniforms.size()));
   for (const auto& uniform : source->uniforms) {
     bytesKey->write(static_cast<uint32_t>(std::hash<std::string>{}(uniform.name)));
