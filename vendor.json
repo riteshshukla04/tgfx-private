@@ -253,6 +253,11 @@
       "cmake": {
         "targets": [
           "hwy"
+        ],
+        "arguments": [
+          "-DHWY_ENABLE_TESTS=OFF",
+          "-DHWY_ENABLE_EXAMPLES=OFF",
+          "-DHWY_ENABLE_INSTALL=OFF"
         ]
       }
     },
