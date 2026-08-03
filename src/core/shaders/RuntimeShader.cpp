@@ -10,13 +10,17 @@
 
 namespace tgfx {
 std::shared_ptr<Shader> Shader::MakeRuntimeShader(std::string body,
-                                                  std::vector<RuntimeShaderUniform> uniforms) {
+                                                  std::vector<RuntimeShaderUniform> uniforms,
+                                                  std::string preamble,
+                                                  std::vector<std::string> functionNames) {
   if (body.empty()) {
     return nullptr;
   }
   auto source = std::make_shared<RuntimeShaderSource>();
   source->body = std::move(body);
   source->uniforms = std::move(uniforms);
+  source->preamble = std::move(preamble);
+  source->functionNames = std::move(functionNames);
   auto shader = std::make_shared<RuntimeShader>(std::move(source));
   shader->weakThis = shader;
   return shader;

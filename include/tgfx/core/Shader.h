@@ -47,6 +47,17 @@ struct RuntimeShaderUniform {
 struct RuntimeShaderSource {
   std::string body;
   std::vector<RuntimeShaderUniform> uniforms;
+  /**
+   * Declarations that must sit at file scope, emitted ahead of the entry point.
+   * GLSL ES has no nested functions, so a helper cannot live in `body`.
+   */
+  std::string preamble;
+  /**
+   * Names defined in `preamble`. Each is renamed to a per-processor mangled name
+   * in both `preamble` and `body`, so two runtime shaders in one program may
+   * declare a helper of the same name.
+   */
+  std::vector<std::string> functionNames;
 };
 
 class FragmentProcessor;
@@ -161,8 +172,9 @@ class Shader {
    * Returns a shader that runs the given source for every fragment. Returns
    * nullptr if the source is empty.
    */
-  static std::shared_ptr<Shader> MakeRuntimeShader(std::string body,
-                                                   std::vector<RuntimeShaderUniform> uniforms = {});
+  static std::shared_ptr<Shader> MakeRuntimeShader(
+      std::string body, std::vector<RuntimeShaderUniform> uniforms = {},
+      std::string preamble = {}, std::vector<std::string> functionNames = {});
 
   static std::shared_ptr<Shader> MakeFractalNoise(float baseFrequencyX, float baseFrequencyY,
                                                   int numOctaves, float seed,
