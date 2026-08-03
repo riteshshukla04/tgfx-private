@@ -7,6 +7,7 @@
 #include "GLSLRuntimeShaderProcessor.h"
 
 #include <array>
+#include <cctype>
 
 namespace tgfx {
 PlacementPtr<RuntimeShaderProcessor> RuntimeShaderProcessor::Make(
@@ -48,6 +49,29 @@ static const char* TypeOf(size_t componentCount) {
   }
 }
 
+static bool IsWordChar(char c) {
+  return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+}
+
+/// Replace whole-identifier occurrences of `from`, leaving `foobar` alone when
+/// renaming `foo`. GLSL has no string literals, so plain text scanning is safe.
+static void RenameIdentifier(std::string* text, const std::string& from, const std::string& to) {
+  if (from.empty()) {
+    return;
+  }
+  size_t pos = 0;
+  while ((pos = text->find(from, pos)) != std::string::npos) {
+    auto end = pos + from.size();
+    if ((pos > 0 && IsWordChar((*text)[pos - 1])) ||
+        (end < text->size() && IsWordChar((*text)[end]))) {
+      pos = end;
+      continue;
+    }
+    text->replace(pos, from.size(), to);
+    pos += to.size();
+  }
+}
+
 void GLSLRuntimeShaderProcessor::emitCode(EmitArgs& args) const {
   auto fragBuilder = args.fragBuilder;
   auto uniformHandler = args.uniformHandler;
@@ -60,13 +84,25 @@ void GLSLRuntimeShaderProcessor::emitCode(EmitArgs& args) const {
   // Emitted as a real function so the author can `return` from anywhere, and
   // mangled so several runtime shaders can coexist in one program.
   auto functionName = fragBuilder->getMangledFunctionName("tgfxRuntimeMain");
+  // The author's helpers must be emitted at file scope, not nested in the entry
+  // point, and mangled for the same reason the entry point is.
+  auto preamble = source->preamble;
+  auto body = source->body;
+  for (const auto& name : source->functionNames) {
+    auto mangled = fragBuilder->getMangledFunctionName(name.c_str());
+    RenameIdentifier(&preamble, name, mangled);
+    RenameIdentifier(&body, name, mangled);
+  }
+  if (!preamble.empty()) {
+    fragBuilder->addFunction(preamble);
+  }
   std::string function = "vec4 " + functionName + "(vec2 fragCoord) {\n";
   for (size_t i = 0; i < names.size(); i++) {
     const auto& uniform = source->uniforms[i];
     function += std::string(TypeOf(uniform.values.size())) + " " + uniform.name + " = " + names[i] +
                 ";\n";
   }
-  function += source->body + "\n}";
+  function += body + "\n}";
   fragBuilder->addFunction(function);
   const auto coordName = fragBuilder->emitPerspTextCoord((*args.transformedCoords)[0]);
   fragBuilder->codeAppendf("%s = %s(%s);", args.outputColor.c_str(), functionName.c_str(),
