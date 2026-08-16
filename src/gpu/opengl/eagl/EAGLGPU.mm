@@ -40,7 +40,7 @@ EAGLGPU::~EAGLGPU() {
 }
 
 std::vector<std::shared_ptr<Texture>> EAGLGPU::importHardwareTextures(
-    HardwareBufferRef hardwareBuffer, uint32_t usage, YUVColorSpace colorSpace) {
+    HardwareBufferRef hardwareBuffer, uint32_t usage, YUVColorSpace) {
   if (!HardwareBufferCheck(hardwareBuffer)) {
     return {};
   }

@@ -34,7 +34,7 @@ CGLGPU::~CGLGPU() {
 }
 
 std::vector<std::shared_ptr<Texture>> CGLGPU::importHardwareTextures(
-    HardwareBufferRef hardwareBuffer, uint32_t usage, YUVColorSpace colorSpace) {
+    HardwareBufferRef hardwareBuffer, uint32_t usage, YUVColorSpace) {
   if (!HardwareBufferCheck(hardwareBuffer)) {
     return {};
   }
