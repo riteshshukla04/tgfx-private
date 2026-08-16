@@ -59,7 +59,7 @@ std::shared_ptr<VulkanBuffer> VulkanBuffer::Make(VulkanGPU* gpu, size_t size, ui
   }
 
   VkBuffer vkBuffer = VK_NULL_HANDLE;
-  VmaAllocation vmaAllocation = VK_NULL_HANDLE;
+  VmaAllocation vmaAllocation = nullptr;
   VmaAllocationInfo vmaAllocInfo = {};
   auto result = vmaCreateBuffer(gpu->allocator(), &bufferInfo, &allocInfo, &vkBuffer,
                                 &vmaAllocation, &vmaAllocInfo);

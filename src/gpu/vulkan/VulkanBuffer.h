@@ -52,9 +52,9 @@ class VulkanBuffer : public GPUBuffer, public VulkanResource {
                VmaAllocation allocation, void* mappedData);
   ~VulkanBuffer() override = default;
 
-  VmaAllocator vmaAllocator = VK_NULL_HANDLE;
+  VmaAllocator vmaAllocator = nullptr;
   VkBuffer buffer = VK_NULL_HANDLE;
-  VmaAllocation allocation = VK_NULL_HANDLE;
+  VmaAllocation allocation = nullptr;
   void* persistentlyMapped = nullptr;
   void* mappedPointer = nullptr;
   VkDeviceSize mappedOffset = 0;

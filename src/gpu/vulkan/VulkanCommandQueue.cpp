@@ -77,7 +77,7 @@ void VulkanCommandQueue::writeTexture(std::shared_ptr<Texture> texture, const Re
   allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
   VkBuffer stagingBuffer = VK_NULL_HANDLE;
-  VmaAllocation stagingAlloc = VK_NULL_HANDLE;
+  VmaAllocation stagingAlloc = nullptr;
   VmaAllocationInfo stagingAllocInfo = {};
   auto result = vmaCreateBuffer(gpu->allocator(), &bufferInfo, &allocInfo, &stagingBuffer,
                                 &stagingAlloc, &stagingAllocInfo);

@@ -73,7 +73,7 @@ std::shared_ptr<VulkanTexture> VulkanTexture::Make(VulkanGPU* gpu,
   allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
   VkImage vkImage = VK_NULL_HANDLE;
-  VmaAllocation vmaAllocation = VK_NULL_HANDLE;
+  VmaAllocation vmaAllocation = nullptr;
   auto result =
       vmaCreateImage(gpu->allocator(), &imageInfo, &allocInfo, &vkImage, &vmaAllocation, nullptr);
   if (result != VK_SUCCESS) {
@@ -151,8 +151,9 @@ std::shared_ptr<VulkanTexture> VulkanTexture::MakeFrom(VulkanGPU* gpu, VkImage i
     return nullptr;
   }
 
-  return gpu->makeResource<VulkanTexture>(descriptor, image, imageView, VK_NULL_HANDLE,
-                                          VK_NULL_HANDLE, format, adopted, initialLayout);
+  VkImageView renderImageView = VK_NULL_HANDLE;
+  return gpu->makeResource<VulkanTexture>(descriptor, image, imageView, renderImageView, nullptr,
+                                          format, adopted, initialLayout);
 }
 
 VulkanTexture::VulkanTexture(const TextureDescriptor& descriptor, VkImage image,

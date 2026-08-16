@@ -183,7 +183,7 @@ class VulkanGPU : public GPU {
   // is recorded at submit() time. Destroyed via reclaimSubmission() after fence signals.
   struct PendingUpload {
     VkBuffer stagingBuffer = VK_NULL_HANDLE;
-    VmaAllocation stagingAlloc = VK_NULL_HANDLE;
+    VmaAllocation stagingAlloc = nullptr;
     std::shared_ptr<VulkanTexture> texture;
     VkBufferImageCopy region = {};
     VkImageLayout originalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -246,7 +246,7 @@ class VulkanGPU : public GPU {
   uint32_t queueFamilyIndex = 0;
   VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
   bool debugUtilsEnabled = false;
-  VmaAllocator vmaAllocator = VK_NULL_HANDLE;
+  VmaAllocator vmaAllocator = nullptr;
   VkPipelineCache vulkanPipelineCache = VK_NULL_HANDLE;
   VulkanExtensions _extensions;
   bool adopted = false;
