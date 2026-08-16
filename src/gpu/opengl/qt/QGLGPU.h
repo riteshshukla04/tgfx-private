@@ -41,7 +41,7 @@ class QGLGPU : public GLGPU {
 #endif
 
   std::vector<std::shared_ptr<Texture>> importHardwareTextures(HardwareBufferRef hardwareBuffer,
-                                                               uint32_t usage) override;
+                                                               uint32_t usage, YUVColorSpace colorSpace) override;
 
  private:
 #ifdef __APPLE__

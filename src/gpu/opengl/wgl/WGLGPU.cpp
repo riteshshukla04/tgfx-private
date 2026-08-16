@@ -278,7 +278,7 @@ void WGLGPU::releaseSharedInteropDevice(HANDLE interopDevice, ID3D11Device* d3d1
 }
 
 std::vector<std::shared_ptr<Texture>> WGLGPU::importHardwareTextures(
-    HardwareBufferRef hardwareBuffer, uint32_t usage) {
+    HardwareBufferRef hardwareBuffer, uint32_t usage, YUVColorSpace colorSpace) {
   if (!HardwareBufferCheck(hardwareBuffer)) {
     return {};
   }

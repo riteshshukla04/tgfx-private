@@ -60,7 +60,7 @@ static uint32_t FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t memoryT
 }
 
 std::shared_ptr<VulkanHardwareTexture> VulkanHardwareTexture::MakeFrom(
-    VulkanGPU* gpu, HardwareBufferRef hardwareBuffer, uint32_t usage) {
+    VulkanGPU* gpu, HardwareBufferRef hardwareBuffer, uint32_t usage, YUVColorSpace colorSpace) {
   if (!gpu || !hardwareBuffer) {
     return nullptr;
   }
@@ -198,11 +198,46 @@ std::shared_ptr<VulkanHardwareTexture> VulkanHardwareTexture::MakeFrom(
     return nullptr;
   }
   if (useExternalFormat) {
+    // The driver's suggested model/range describe the format family, not the
+    // content: video decoders emit full-range frames whose suggestion still
+    // says ITU_NARROW, which lifts blacks and caps saturation. The caller's
+    // colorSpace carries the real content signal, so prefer it; if the driver
+    // rejects the combination, retry below with the pure suggestion.
+    VkSamplerYcbcrModelConversion contentModel = formatProps.suggestedYcbcrModel;
+    VkSamplerYcbcrRange contentRange = formatProps.suggestedYcbcrRange;
+    switch (colorSpace) {
+      case YUVColorSpace::BT601_LIMITED:
+        contentModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
+        contentRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
+        break;
+      case YUVColorSpace::BT601_FULL:
+        contentModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
+        contentRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
+        break;
+      case YUVColorSpace::BT709_LIMITED:
+        contentModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+        contentRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
+        break;
+      case YUVColorSpace::BT709_FULL:
+        contentModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+        contentRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
+        break;
+      case YUVColorSpace::BT2020_LIMITED:
+        contentModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
+        contentRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW;
+        break;
+      case YUVColorSpace::BT2020_FULL:
+        contentModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
+        contentRange = VK_SAMPLER_YCBCR_RANGE_ITU_FULL;
+        break;
+      default:
+        break;
+    }
     VkSamplerYcbcrConversionCreateInfo ycbcrInfo = {};
     ycbcrInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO;
     ycbcrInfo.format = VK_FORMAT_UNDEFINED;
-    ycbcrInfo.ycbcrModel = formatProps.suggestedYcbcrModel;
-    ycbcrInfo.ycbcrRange = formatProps.suggestedYcbcrRange;
+    ycbcrInfo.ycbcrModel = contentModel;
+    ycbcrInfo.ycbcrRange = contentRange;
     ycbcrInfo.components = formatProps.samplerYcbcrConversionComponents;
     ycbcrInfo.xChromaOffset = formatProps.suggestedXChromaOffset;
     ycbcrInfo.yChromaOffset = formatProps.suggestedYChromaOffset;
@@ -218,6 +253,13 @@ std::shared_ptr<VulkanHardwareTexture> VulkanHardwareTexture::MakeFrom(
     ycbcrInfo.pNext = &ycbcrExternalFormat;
 
     result = vkCreateSamplerYcbcrConversion(device, &ycbcrInfo, nullptr, &ycbcrConversion);
+    if (result != VK_SUCCESS &&
+        (ycbcrInfo.ycbcrModel != formatProps.suggestedYcbcrModel ||
+         ycbcrInfo.ycbcrRange != formatProps.suggestedYcbcrRange)) {
+      ycbcrInfo.ycbcrModel = formatProps.suggestedYcbcrModel;
+      ycbcrInfo.ycbcrRange = formatProps.suggestedYcbcrRange;
+      result = vkCreateSamplerYcbcrConversion(device, &ycbcrInfo, nullptr, &ycbcrConversion);
+    }
     if (result != VK_SUCCESS) {
       LOGE("VulkanHardwareTexture::MakeFrom() vkCreateSamplerYcbcrConversion failed: %s",
            VkResultToString(result));

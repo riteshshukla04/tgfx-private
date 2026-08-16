@@ -109,7 +109,7 @@ class VulkanGPU : public GPU {
       const RenderPipelineDescriptor& descriptor) override;
   std::shared_ptr<CommandEncoder> createCommandEncoder() override;
   std::vector<std::shared_ptr<Texture>> importHardwareTextures(HardwareBufferRef hardwareBuffer,
-                                                               uint32_t usage) override;
+                                                               uint32_t usage, YUVColorSpace colorSpace) override;
   std::shared_ptr<Texture> importBackendTexture(const BackendTexture& backendTexture,
                                                 uint32_t usage, bool adopted = false) override;
   std::shared_ptr<Texture> importBackendRenderTarget(

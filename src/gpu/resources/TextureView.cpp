@@ -127,8 +127,8 @@ std::shared_ptr<TextureView> TextureView::MakeFrom(Context* context,
   if (info.format == HardwareBufferFormat::Unknown) {
     return nullptr;
   }
-  auto textures =
-      context->gpu()->importHardwareTextures(hardwareBuffer, TextureUsage::TEXTURE_BINDING);
+  auto textures = context->gpu()->importHardwareTextures(
+      hardwareBuffer, TextureUsage::TEXTURE_BINDING, colorSpace);
   if (textures.empty()) {
     return nullptr;
   }

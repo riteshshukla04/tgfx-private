@@ -164,7 +164,7 @@ int MetalGPU::getSampleCount(int requestedCount, PixelFormat pixelFormat) const 
 }
 
 std::vector<std::shared_ptr<Texture>> MetalGPU::importHardwareTextures(
-    HardwareBufferRef hardwareBuffer, uint32_t usage) {
+    HardwareBufferRef hardwareBuffer, uint32_t usage, YUVColorSpace colorSpace) {
   return MetalHardwareTexture::MakeFrom(this, hardwareBuffer, usage, getTextureCache());
 }
 

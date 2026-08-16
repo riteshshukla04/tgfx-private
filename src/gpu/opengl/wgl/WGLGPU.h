@@ -40,7 +40,7 @@ class WGLGPU : public GLGPU {
   ~WGLGPU() override;
 
   std::vector<std::shared_ptr<Texture>> importHardwareTextures(HardwareBufferRef hardwareBuffer,
-                                                               uint32_t usage) override;
+                                                               uint32_t usage, YUVColorSpace colorSpace) override;
 
   /**
    * Returns true if the WGL_NV_DX_interop extension is available in the current GL context.
