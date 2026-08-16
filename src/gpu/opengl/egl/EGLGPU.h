@@ -32,7 +32,7 @@ class EGLGPU : public GLGPU {
   }
 
   std::vector<std::shared_ptr<Texture>> importHardwareTextures(HardwareBufferRef hardwareBuffer,
-                                                               uint32_t usage) override;
+                                                               uint32_t usage, YUVColorSpace colorSpace) override;
 
  private:
   void* eglDisplay = nullptr;

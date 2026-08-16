@@ -31,7 +31,7 @@ bool HardwareBufferAvailable() {
 }
 
 std::vector<std::shared_ptr<Texture>> QGLGPU::importHardwareTextures(
-    HardwareBufferRef hardwareBuffer, uint32_t usage) {
+    HardwareBufferRef hardwareBuffer, uint32_t usage, YUVColorSpace colorSpace) {
   if (!HardwareBufferCheck(hardwareBuffer)) {
     return {};
   }
@@ -68,7 +68,7 @@ bool HardwareBufferAvailable() {
   return false;
 }
 
-std::vector<std::shared_ptr<Texture>> QGLGPU::importHardwareTextures(HardwareBufferRef, uint32_t) {
+std::vector<std::shared_ptr<Texture>> QGLGPU::importHardwareTextures(HardwareBufferRef, uint32_t, YUVColorSpace) {
   return {};
 }
 

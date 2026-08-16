@@ -83,7 +83,7 @@ class WebGPUGPU : public GPU {
   int getSampleCount(int requestedCount, PixelFormat pixelFormat) const override;
 
   std::vector<std::shared_ptr<Texture>> importHardwareTextures(HardwareBufferRef hardwareBuffer,
-                                                               uint32_t usage) override;
+                                                               uint32_t usage, YUVColorSpace colorSpace) override;
 
   std::shared_ptr<Texture> importBackendTexture(const BackendTexture& backendTexture,
                                                 uint32_t usage, bool adopted = false) override;

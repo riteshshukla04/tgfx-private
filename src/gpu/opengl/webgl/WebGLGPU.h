@@ -27,6 +27,6 @@ class WebGLGPU : public GLGPU {
   }
 
   std::vector<std::shared_ptr<Texture>> importHardwareTextures(HardwareBufferRef hardwareBuffer,
-                                                               uint32_t usage) override;
+                                                               uint32_t usage, YUVColorSpace colorSpace) override;
 };
 }  // namespace tgfx

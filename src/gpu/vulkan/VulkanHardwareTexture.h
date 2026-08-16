@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include "tgfx/core/YUVColorSpace.h"
 #include "gpu/vulkan/VulkanTexture.h"
 #include "tgfx/platform/HardwareBuffer.h"
 
@@ -33,9 +34,9 @@ class VulkanGPU;
  */
 class VulkanHardwareTexture : public VulkanTexture {
  public:
-  static std::shared_ptr<VulkanHardwareTexture> MakeFrom(VulkanGPU* gpu,
-                                                         HardwareBufferRef hardwareBuffer,
-                                                         uint32_t usage);
+  static std::shared_ptr<VulkanHardwareTexture> MakeFrom(
+      VulkanGPU* gpu, HardwareBufferRef hardwareBuffer, uint32_t usage,
+      YUVColorSpace colorSpace = YUVColorSpace::BT601_LIMITED);
   ~VulkanHardwareTexture() override;
 
   HardwareBufferRef getHardwareBuffer() const override {

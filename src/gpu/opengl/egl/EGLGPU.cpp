@@ -58,7 +58,7 @@ bool HardwareBufferAvailable() {
 #if defined(__ANDROID__) || defined(ANDROID) || defined(__OHOS__)
 
 std::vector<std::shared_ptr<Texture>> EGLGPU::importHardwareTextures(
-    HardwareBufferRef hardwareBuffer, uint32_t usage) {
+    HardwareBufferRef hardwareBuffer, uint32_t usage, YUVColorSpace colorSpace) {
   if (!HardwareBufferCheck(hardwareBuffer)) {
     return {};
   }
@@ -73,7 +73,7 @@ std::vector<std::shared_ptr<Texture>> EGLGPU::importHardwareTextures(
 
 #else
 
-std::vector<std::shared_ptr<Texture>> EGLGPU::importHardwareTextures(HardwareBufferRef, uint32_t) {
+std::vector<std::shared_ptr<Texture>> EGLGPU::importHardwareTextures(HardwareBufferRef, uint32_t, YUVColorSpace) {
   return {};
 }
 

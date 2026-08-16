@@ -24,7 +24,7 @@ bool HardwareBufferAvailable() {
 }
 
 std::vector<std::shared_ptr<Texture>> WebGLGPU::importHardwareTextures(HardwareBufferRef,
-                                                                       uint32_t) {
+                                                                       uint32_t, YUVColorSpace) {
   return {};
 }
 }  // namespace tgfx

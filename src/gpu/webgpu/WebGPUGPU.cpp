@@ -91,7 +91,7 @@ int WebGPUGPU::getSampleCount(int requestedCount, PixelFormat pixelFormat) const
 }
 
 std::vector<std::shared_ptr<Texture>> WebGPUGPU::importHardwareTextures(HardwareBufferRef,
-                                                                        uint32_t) {
+                                                                        uint32_t, YUVColorSpace) {
   return {};
 }
 

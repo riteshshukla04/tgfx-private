@@ -460,7 +460,7 @@ std::shared_ptr<CommandEncoder> VulkanGPU::createCommandEncoder() {
 }
 
 std::vector<std::shared_ptr<Texture>> VulkanGPU::importHardwareTextures(
-    HardwareBufferRef hardwareBuffer, uint32_t usage) {
+    HardwareBufferRef hardwareBuffer, uint32_t usage, YUVColorSpace colorSpace) {
 #if defined(__ANDROID__)
   if (!HardwareBufferCheck(hardwareBuffer)) {
     return {};
@@ -468,7 +468,7 @@ std::vector<std::shared_ptr<Texture>> VulkanGPU::importHardwareTextures(
   if (!_extensions.androidHardwareBuffer) {
     return {};
   }
-  auto texture = VulkanHardwareTexture::MakeFrom(this, hardwareBuffer, usage);
+  auto texture = VulkanHardwareTexture::MakeFrom(this, hardwareBuffer, usage, colorSpace);
   if (texture == nullptr) {
     return {};
   }

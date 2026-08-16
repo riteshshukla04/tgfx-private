@@ -101,6 +101,16 @@ HardwareBufferInfo HardwareBufferGetInfo(HardwareBufferRef buffer) {
       info.rowBytes = static_cast<size_t>(desc.stride);
       break;
     default:
+#ifdef TGFX_USE_VULKAN
+      // Vendor-private decoder formats (Exynos 0x123 and friends) import fine
+      // as Vulkan external formats with sampler YCbCr conversion, so let them
+      // through as YUV; the GL backend has no such path and keeps rejecting.
+      if (desc.usage & AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE) {
+        info.format = HardwareBufferFormat::YCBCR_420_SP;
+        info.rowBytes = static_cast<size_t>(desc.stride);
+        break;
+      }
+#endif
       return {};
       break;
   }

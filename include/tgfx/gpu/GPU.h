@@ -19,6 +19,7 @@
 #pragma once
 
 #include <memory>
+#include "tgfx/core/YUVColorSpace.h"
 #include "tgfx/gpu/Backend.h"
 #include "tgfx/gpu/CommandEncoder.h"
 #include "tgfx/gpu/CommandQueue.h"
@@ -97,7 +98,7 @@ class GPU {
    * @return An empty vector if the hardwareBuffer is invalid or not supported by the GPU backend.
    */
   virtual std::vector<std::shared_ptr<Texture>> importHardwareTextures(
-      HardwareBufferRef hardwareBuffer, uint32_t usage) = 0;
+      HardwareBufferRef hardwareBuffer, uint32_t usage, YUVColorSpace colorSpace = YUVColorSpace::BT601_LIMITED) = 0;
 
   /**
    * Creates a new Texture that wraps the specified backend texture.
