@@ -156,8 +156,10 @@ void FragmentProcessor::emitChild(size_t childIndex, const std::string& inputCol
 }
 
 void FragmentProcessor::emitChild(size_t childIndex, const std::string& inputColor,
-                                  EmitArgs& parentArgs) const {
-  internalEmitChild(childIndex, inputColor, parentArgs.outputColor, parentArgs);
+                                  EmitArgs& parentArgs,
+                                  std::function<std::string(std::string_view)> coordFunc) const {
+  internalEmitChild(childIndex, inputColor, parentArgs.outputColor, parentArgs,
+                    std::move(coordFunc));
 }
 
 void FragmentProcessor::internalEmitChild(

@@ -155,7 +155,9 @@ void GLSLRuntimeShaderProcessor::emitCode(EmitArgs& args) const {
   if (!preamble.empty()) {
     fragBuilder->addFunction(preamble);
   }
-  std::string function = "vec4 " + functionName + "(vec2 fragCoord) {\n";
+  // highp: the default mediump float collapses pixel-offset sampling (fp16
+  // spacing exceeds 1px past 1024) and broke edge-detection shaders on GL.
+  std::string function = "vec4 " + functionName + "(highp vec2 fragCoord) {\n";
   for (size_t i = 0; i < names.size(); i++) {
     const auto& uniform = source->uniforms[i];
     function +=

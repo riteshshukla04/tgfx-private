@@ -52,16 +52,16 @@ void GLSLXfermodeFragmentProcessor::emitCode(EmitArgs& args) const {
     std::string inputColor = "inputColor";
     fragBuilder->codeAppendf("vec4 inputColor = vec4(%s.rgb, 1.0);", args.inputColor.c_str());
     std::string srcColor = "xfer_src";
-    emitChild(0, inputColor, &srcColor, args);
+    emitChild(0, inputColor, &srcColor, args, args.coordFunc);
     std::string dstColor = "xfer_dst";
-    emitChild(1, inputColor, &dstColor, args);
+    emitChild(1, inputColor, &dstColor, args, args.coordFunc);
     fragBuilder->codeAppendf("// Compose Xfer Mode: %s\n", BlendModeName(mode));
     AppendMode(fragBuilder, srcColor, coverage, dstColor, args.outputColor, mode, false);
     // re-multiply the output color by the input color's alpha
     fragBuilder->codeAppendf("%s *= %s.a;", args.outputColor.c_str(), args.inputColor.c_str());
   } else {
     std::string childColor = "child";
-    emitChild(0, &childColor, args);
+    emitChild(0, &childColor, args, args.coordFunc);
     // emit blend code
     fragBuilder->codeAppendf("// Compose Xfer Mode: %s\n", BlendModeName(mode));
     if (child == XfermodeFragmentProcessor::Child::DstChild) {

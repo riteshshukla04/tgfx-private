@@ -276,7 +276,8 @@ class FragmentProcessor : public Processor {
   /**
    * Variation that uses the parent's output color variable to hold the child's output.
    */
-  void emitChild(size_t childIndex, const std::string& inputColor, EmitArgs& parentArgs) const;
+  void emitChild(size_t childIndex, const std::string& inputColor, EmitArgs& parentArgs,
+                 std::function<std::string(std::string_view)> coordFunc = {}) const;
 
  protected:
   std::vector<PlacementPtr<FragmentProcessor>> childProcessors = {};
