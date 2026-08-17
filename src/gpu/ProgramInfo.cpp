@@ -158,6 +158,15 @@ std::shared_ptr<Program> ProgramInfo::getProgram() const {
   programKey.write(depthStencil.stencilWriteMask);
   EncodeStencilFace(programKey, depthStencil.stencilFront);
   EncodeStencilFace(programKey, depthStencil.stencilBack);
+  // Immutable conversion samplers (Vulkan YCbCr) are baked into the pipeline's descriptor set
+  // layout, so pipelines with different conversions cannot share a cache entry. Handles are
+  // stable for the GPU's lifetime (GPU-level cache), which keeps this key deterministic.
+  for (auto& samplerInfo : getSamplers()) {
+    auto handle = samplerInfo.texture != nullptr ? samplerInfo.texture->samplerConversionHandle()
+                                                 : uint64_t(0);
+    programKey.write(static_cast<uint32_t>(handle));
+    programKey.write(static_cast<uint32_t>(handle >> 32));
+  }
 
   auto program = context->globalCache()->findProgram(programKey);
   if (program == nullptr) {

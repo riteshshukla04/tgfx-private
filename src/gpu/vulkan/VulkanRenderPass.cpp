@@ -25,6 +25,7 @@
 #include "VulkanTexture.h"
 #include "VulkanUtil.h"
 #include "core/utils/Log.h"
+#include "core/utils/Log.h"
 
 namespace tgfx {
 
@@ -370,6 +371,11 @@ void VulkanRenderPass::setTexture(unsigned binding, std::shared_ptr<Texture> tex
   auto vulkanSampler = std::static_pointer_cast<VulkanSampler>(sampler);
   auto view = vulkanTexture->vulkanImageView();
   auto samp = vulkanSampler->vulkanSampler();
+  // A YCbCr image view converts only through a sampler carrying the same conversion; the cached
+  // sampler would silently skip YUV-to-RGB.
+  if (auto ycbcr = vulkanTexture->ycbcrSampler(); ycbcr != VK_NULL_HANDLE) {
+    samp = ycbcr;
+  }
   auto& tb = lastBound.textureBindings[unitIndex];
   if (tb.imageView == view && tb.sampler == samp) {
     return;

@@ -103,6 +103,16 @@ class Texture {
   virtual ~Texture() = default;
 
   /**
+   * Returns an opaque backend handle of the immutable sampler this texture must be sampled with,
+   * or 0 for regular textures. Non-zero for textures whose sampling bakes a color conversion into
+   * the sampler (Vulkan YCbCr hardware buffers); pipelines embed it into their descriptor set
+   * layout, so it also contributes to the program cache key.
+   */
+  virtual uint64_t samplerConversionHandle() const {
+    return 0;
+  }
+
+  /**
    * Returns the width of the texture in pixels.
    */
   int width() const {

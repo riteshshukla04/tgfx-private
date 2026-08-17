@@ -60,6 +60,20 @@ class VulkanTexture : public Texture, public VulkanResource {
     return layout;
   }
 
+  /**
+   * The sampler carrying this texture's VkSamplerYcbcrConversion, or VK_NULL_HANDLE for regular
+   * textures. Sampling a YCbCr image view through a sampler without the same conversion skips the
+   * YUV-to-RGB step entirely, so binds must use this sampler when it exists.
+   */
+  virtual VkSampler ycbcrSampler() const {
+    return VK_NULL_HANDLE;
+  }
+
+  uint64_t samplerConversionHandle() const override {
+    // C-style: VkSampler is a pointer on 64-bit builds but already uint64_t on 32-bit ones.
+    return (uint64_t)ycbcrSampler();
+  }
+
   void setCurrentLayout(VkImageLayout newLayout) {
     layout = newLayout;
   }

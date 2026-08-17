@@ -228,6 +228,13 @@ class BindingEntry {
    * ShaderVisibility::VertexFragment means both stages can access it.
    */
   uint32_t visibility = ShaderVisibility::VertexFragment;
+
+  /**
+   * For texture sampler entries: the opaque backend handle of an immutable sampler the pipeline
+   * must bake into its descriptor set layout (Vulkan YCbCr conversions), or 0 for none. Backends
+   * without immutable samplers ignore it.
+   */
+  uint64_t immutableSampler = 0;
 };
 
 /**

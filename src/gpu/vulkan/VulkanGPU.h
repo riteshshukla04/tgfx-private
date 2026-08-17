@@ -18,10 +18,12 @@
 
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <deque>
 #include <list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -226,6 +228,18 @@ class VulkanGPU : public GPU {
 
   const PresentationSlot& acquirePresentationSlot();
 
+  // YCbCr conversions (used by VulkanHardwareTexture)
+  // One conversion + sampler per distinct external format/model/range combination, cached for the
+  // GPU's lifetime so pipelines can bake the sampler into descriptor set layouts as an immutable
+  // sampler and stay reusable across frames.
+  struct YcbcrConversionEntry {
+    VkSamplerYcbcrConversion conversion = VK_NULL_HANDLE;
+    VkSampler sampler = VK_NULL_HANDLE;
+  };
+
+  const YcbcrConversionEntry* getYcbcrConversion(const VkSamplerYcbcrConversionCreateInfo& info,
+                                                 uint64_t externalFormat);
+
  private:
   VulkanGPU();
 
@@ -263,6 +277,7 @@ class VulkanGPU : public GPU {
   std::list<VulkanResource*> resources = {};
   std::shared_ptr<ReturnQueue> returnQueue = ReturnQueue::Make();
   std::unordered_map<uint32_t, std::shared_ptr<Sampler>> samplerCache = {};
+  std::map<std::array<uint64_t, 3>, YcbcrConversionEntry> ycbcrConversionCache = {};
   std::vector<VkDescriptorPool> descriptorPoolCache = {};
 
   // Submission state (fence pool, inflight queue, presentation slots)

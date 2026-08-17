@@ -191,6 +191,7 @@ std::shared_ptr<VulkanHardwareTexture> VulkanHardwareTexture::MakeFrom(
   }
 
   VkSamplerYcbcrConversion ycbcrConversion = VK_NULL_HANDLE;
+  VkSampler conversionSampler = VK_NULL_HANDLE;
   if (useExternalFormat && !gpu->extensions().samplerYcbcrConversion) {
     LOGE("VulkanHardwareTexture::MakeFrom() external format requires YCbCr conversion support.");
     vkFreeMemory(device, memory, nullptr);
@@ -252,21 +253,25 @@ std::shared_ptr<VulkanHardwareTexture> VulkanHardwareTexture::MakeFrom(
     ycbcrExternalFormat.externalFormat = formatProps.externalFormat;
     ycbcrInfo.pNext = &ycbcrExternalFormat;
 
-    result = vkCreateSamplerYcbcrConversion(device, &ycbcrInfo, nullptr, &ycbcrConversion);
-    if (result != VK_SUCCESS &&
+    // The GPU-level cache owns the conversion and its sampler: stable handles let pipelines bake
+    // the sampler into descriptor set layouts as an immutable sampler and stay reusable across
+    // frames, which the spec requires for YCbCr sampling.
+    auto entry = gpu->getYcbcrConversion(ycbcrInfo, formatProps.externalFormat);
+    if (entry == nullptr &&
         (ycbcrInfo.ycbcrModel != formatProps.suggestedYcbcrModel ||
          ycbcrInfo.ycbcrRange != formatProps.suggestedYcbcrRange)) {
       ycbcrInfo.ycbcrModel = formatProps.suggestedYcbcrModel;
       ycbcrInfo.ycbcrRange = formatProps.suggestedYcbcrRange;
-      result = vkCreateSamplerYcbcrConversion(device, &ycbcrInfo, nullptr, &ycbcrConversion);
+      entry = gpu->getYcbcrConversion(ycbcrInfo, formatProps.externalFormat);
     }
-    if (result != VK_SUCCESS) {
-      LOGE("VulkanHardwareTexture::MakeFrom() vkCreateSamplerYcbcrConversion failed: %s",
-           VkResultToString(result));
+    if (entry == nullptr) {
+      LOGE("VulkanHardwareTexture::MakeFrom() vkCreateSamplerYcbcrConversion failed.");
       vkFreeMemory(device, memory, nullptr);
       vkDestroyImage(device, vkImage, nullptr);
       return nullptr;
     }
+    ycbcrConversion = entry->conversion;
+    conversionSampler = entry->sampler;
   }
 
   VkImageViewCreateInfo viewInfo = {};
@@ -292,9 +297,6 @@ std::shared_ptr<VulkanHardwareTexture> VulkanHardwareTexture::MakeFrom(
   if (result != VK_SUCCESS) {
     LOGE("VulkanHardwareTexture::MakeFrom() vkCreateImageView failed: %s",
          VkResultToString(result));
-    if (ycbcrConversion != VK_NULL_HANDLE) {
-      vkDestroySamplerYcbcrConversion(device, ycbcrConversion, nullptr);
-    }
     vkFreeMemory(device, memory, nullptr);
     vkDestroyImage(device, vkImage, nullptr);
     return nullptr;
@@ -311,18 +313,19 @@ std::shared_ptr<VulkanHardwareTexture> VulkanHardwareTexture::MakeFrom(
   VkFormat reportedFormat = useExternalFormat ? VK_FORMAT_R8G8B8A8_UNORM : vkFormat;
 
   return gpu->makeResource<VulkanHardwareTexture>(descriptor, hardwareBuffer, vkImage, vkImageView,
-                                                  memory, ycbcrConversion, reportedFormat);
+                                                  memory, ycbcrConversion, conversionSampler,
+                                                  reportedFormat);
 }
 
 VulkanHardwareTexture::VulkanHardwareTexture(const TextureDescriptor& descriptor,
                                              HardwareBufferRef hardwareBuffer, VkImage image,
                                              VkImageView imageView, VkDeviceMemory dedicatedMemory,
                                              VkSamplerYcbcrConversion ycbcrConversion,
-                                             VkFormat format)
+                                             VkSampler conversionSampler, VkFormat format)
     : VulkanTexture(descriptor, image, imageView, VK_NULL_HANDLE, VK_NULL_HANDLE, format, true,
                     VK_IMAGE_LAYOUT_UNDEFINED),
       hardwareBuffer(hardwareBuffer), dedicatedMemory(dedicatedMemory),
-      ycbcrConversion(ycbcrConversion) {
+      ycbcrConversion(ycbcrConversion), conversionSampler(conversionSampler) {
   HardwareBufferRetain(hardwareBuffer);
 }
 
@@ -332,10 +335,10 @@ VulkanHardwareTexture::~VulkanHardwareTexture() {
 
 void VulkanHardwareTexture::onRelease(VulkanGPU* gpu) {
   VkDevice device = gpu->device();
-  if (ycbcrConversion != VK_NULL_HANDLE) {
-    vkDestroySamplerYcbcrConversion(device, ycbcrConversion, nullptr);
-    ycbcrConversion = VK_NULL_HANDLE;
-  }
+  // The conversion and its sampler live in the GPU-level cache; only the view/image/memory die
+  // with the texture.
+  ycbcrConversion = VK_NULL_HANDLE;
+  conversionSampler = VK_NULL_HANDLE;
   VulkanTexture::onRelease(gpu);
   if (dedicatedMemory != VK_NULL_HANDLE) {
     vkFreeMemory(device, dedicatedMemory, nullptr);

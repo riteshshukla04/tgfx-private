@@ -43,17 +43,23 @@ class VulkanHardwareTexture : public VulkanTexture {
     return hardwareBuffer;
   }
 
+  VkSampler ycbcrSampler() const override {
+    return conversionSampler;
+  }
+
  protected:
   void onRelease(VulkanGPU* gpu) override;
 
  private:
   VulkanHardwareTexture(const TextureDescriptor& descriptor, HardwareBufferRef hardwareBuffer,
                         VkImage image, VkImageView imageView, VkDeviceMemory dedicatedMemory,
-                        VkSamplerYcbcrConversion ycbcrConversion, VkFormat format);
+                        VkSamplerYcbcrConversion ycbcrConversion, VkSampler conversionSampler,
+                        VkFormat format);
 
   HardwareBufferRef hardwareBuffer = nullptr;
   VkDeviceMemory dedicatedMemory = VK_NULL_HANDLE;
   VkSamplerYcbcrConversion ycbcrConversion = VK_NULL_HANDLE;
+  VkSampler conversionSampler = VK_NULL_HANDLE;
 
   friend class VulkanGPU;
 };

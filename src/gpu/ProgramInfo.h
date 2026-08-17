@@ -150,6 +150,12 @@ class ProgramInfo {
     colorWriteMask = mask;
   }
 
+  /**
+   * Returns the textures and sampler states of every processor, in texture-unit order — the same
+   * order setData() binds them and program builders lay out sampler bindings.
+   */
+  std::vector<SamplerInfo> getSamplers() const;
+
  private:
   RenderTarget* renderTarget = nullptr;
   GeometryProcessor* geometryProcessor = nullptr;
@@ -164,8 +170,6 @@ class ProgramInfo {
   uint32_t colorWriteMask = ColorWriteMask::All;
 
   void updateProcessorIndices();
-
-  std::vector<SamplerInfo> getSamplers() const;
 
   void updateUniformDataSuffix(UniformData* vertexUniformData, UniformData* fragmentUniformData,
                                const Processor* processor) const;

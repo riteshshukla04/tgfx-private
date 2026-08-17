@@ -205,9 +205,16 @@ std::shared_ptr<Program> GLSLProgramBuilder::finalize() {
                                     ShaderVisibility::Fragment};
     descriptor.layout.uniformBlocks.push_back(fragmentBinding);
   }
-  int textureBinding = 0;
+  unsigned textureBinding = 0;
+  // Same processor iteration order as ProgramInfo::setData(), which binds these units 0..N.
+  auto samplerInfos = programInfo->getSamplers();
   for (const auto& sampler : _uniformHandler.getSamplers()) {
-    descriptor.layout.textureSamplers.emplace_back(sampler.name(), textureBinding++);
+    auto index = static_cast<size_t>(textureBinding);
+    BindingEntry entry(sampler.name(), textureBinding++);
+    if (index < samplerInfos.size() && samplerInfos[index].texture != nullptr) {
+      entry.immutableSampler = samplerInfos[index].texture->samplerConversionHandle();
+    }
+    descriptor.layout.textureSamplers.push_back(entry);
   }
   // Although the vertexProvider constructs the rectangle in a counterclockwise order, the model
   // uses a coordinate system with the Y-axis pointing downward, which is opposite to OpenGL's

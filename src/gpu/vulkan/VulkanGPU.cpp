@@ -459,6 +459,50 @@ std::shared_ptr<CommandEncoder> VulkanGPU::createCommandEncoder() {
   return VulkanCommandEncoder::Make(this);
 }
 
+const VulkanGPU::YcbcrConversionEntry* VulkanGPU::getYcbcrConversion(
+    const VkSamplerYcbcrConversionCreateInfo& info, uint64_t externalFormat) {
+  std::array<uint64_t, 3> key = {
+      externalFormat,
+      static_cast<uint64_t>(info.ycbcrModel) | (static_cast<uint64_t>(info.ycbcrRange) << 8) |
+          (static_cast<uint64_t>(info.xChromaOffset) << 16) |
+          (static_cast<uint64_t>(info.yChromaOffset) << 24) |
+          (static_cast<uint64_t>(info.chromaFilter) << 32) |
+          (static_cast<uint64_t>(info.forceExplicitReconstruction) << 40),
+      static_cast<uint64_t>(info.components.r) | (static_cast<uint64_t>(info.components.g) << 8) |
+          (static_cast<uint64_t>(info.components.b) << 16) |
+          (static_cast<uint64_t>(info.components.a) << 24)};
+  auto iter = ycbcrConversionCache.find(key);
+  if (iter != ycbcrConversionCache.end()) {
+    return &iter->second;
+  }
+  YcbcrConversionEntry entry = {};
+  auto result = vkCreateSamplerYcbcrConversion(vulkanDevice, &info, nullptr, &entry.conversion);
+  if (result != VK_SUCCESS) {
+    return nullptr;
+  }
+  VkSamplerYcbcrConversionInfo conversionInfo = {};
+  conversionInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO;
+  conversionInfo.conversion = entry.conversion;
+  VkSamplerCreateInfo samplerInfo = {};
+  samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+  samplerInfo.pNext = &conversionInfo;
+  samplerInfo.minFilter = info.chromaFilter;
+  samplerInfo.magFilter = info.chromaFilter;
+  samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+  samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  samplerInfo.maxLod = 0.0f;
+  samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+  result = vkCreateSampler(vulkanDevice, &samplerInfo, nullptr, &entry.sampler);
+  if (result != VK_SUCCESS) {
+    vkDestroySamplerYcbcrConversion(vulkanDevice, entry.conversion, nullptr);
+    return nullptr;
+  }
+  auto inserted = ycbcrConversionCache.try_emplace(key, entry);
+  return &inserted.first->second;
+}
+
 std::vector<std::shared_ptr<Texture>> VulkanGPU::importHardwareTextures(
     HardwareBufferRef hardwareBuffer, uint32_t usage, YUVColorSpace colorSpace) {
 #if defined(__ANDROID__)
@@ -926,6 +970,11 @@ void VulkanGPU::releaseAll(bool releaseGPU) {
 
   // 4. Clear caches. Sampler cache holds shared_ptrs that may trigger ReturnQueue on release.
   samplerCache.clear();
+  for (auto& [key, entry] : ycbcrConversionCache) {
+    vkDestroySampler(vulkanDevice, entry.sampler, nullptr);
+    vkDestroySamplerYcbcrConversion(vulkanDevice, entry.conversion, nullptr);
+  }
+  ycbcrConversionCache.clear();
   for (auto pool : descriptorPoolCache) {
     vkDestroyDescriptorPool(vulkanDevice, pool, nullptr);
   }
