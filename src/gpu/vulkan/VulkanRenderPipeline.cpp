@@ -249,12 +249,20 @@ bool VulkanRenderPipeline::createDescriptorSetLayouts(VulkanGPU* gpu,
   // needed in the future (e.g. displacement mapping), stageFlags should be extended accordingly.
   std::vector<VkDescriptorSetLayoutBinding> texBindings;
   auto samplerCount = descriptor.layout.textureSamplers.size();
+  // Stable storage for pImmutableSamplers pointers until vkCreateDescriptorSetLayout returns.
+  std::vector<VkSampler> immutableSamplers(samplerCount, VK_NULL_HANDLE);
   for (size_t i = 0; i < samplerCount; i++) {
     VkDescriptorSetLayoutBinding binding = {};
     binding.binding = static_cast<unsigned>(i);
     binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     binding.descriptorCount = 1;
     binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    // YCbCr conversions only convert when their sampler is immutable in the layout
+    // (VUID-VkDescriptorImageInfo-sampler); the handle rides in from the program builder.
+    if (auto handle = descriptor.layout.textureSamplers[i].immutableSampler; handle != 0) {
+      immutableSamplers[i] = (VkSampler)handle;
+      binding.pImmutableSamplers = &immutableSamplers[i];
+    }
     texBindings.push_back(binding);
   }
   VkDescriptorSetLayoutCreateInfo texLayoutInfo = {};
