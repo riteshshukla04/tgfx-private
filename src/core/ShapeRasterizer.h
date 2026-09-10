@@ -41,7 +41,13 @@ class ShapeRasterizer : public DataSource<ShapeBuffer> {
   /**
    * Creates a ShapeRasterizer from a shape.
    */
-  ShapeRasterizer(int width, int height, std::shared_ptr<Shape> shape, AAType aaType);
+  /**
+   * With preferTriangles, a shape that would normally be rasterized into a coverage mask is
+   * triangulated instead, so the caller can transform it on the GPU. A mask can only be
+   * transformed by resampling it, which a rotation would visibly soften.
+   */
+  ShapeRasterizer(int width, int height, std::shared_ptr<Shape> shape, AAType aaType,
+                  bool preferTriangles = false);
 
   /**
    * Returns true if the ShapeRasterizer supports asynchronous decoding. If so, the getData()
@@ -63,6 +69,7 @@ class ShapeRasterizer : public DataSource<ShapeBuffer> {
   int height = 0;
   std::shared_ptr<Shape> shape = nullptr;
   AAType aaType = AAType::None;
+  bool preferTriangles = false;
 
   std::shared_ptr<Data> makeTriangles(const Path& finalPath) const;
 

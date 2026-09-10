@@ -212,7 +212,8 @@ static UniqueKey AppendClipBoundsKey(const UniqueKey& uniqueKey, const Rect& cli
 std::shared_ptr<GPUShapeProxy> ProxyProvider::createGPUShapeProxy(std::shared_ptr<Shape> shape,
                                                                   AAType aaType,
                                                                   const Rect& clipBounds,
-                                                                  uint32_t renderFlags) {
+                                                                  uint32_t renderFlags,
+                                                                  bool preferTriangles) {
   if (shape == nullptr) {
     return nullptr;
   }
@@ -229,6 +230,12 @@ std::shared_ptr<GPUShapeProxy> ProxyProvider::createGPUShapeProxy(std::shared_pt
   } else {
     static const auto NonAntialiasShapeType = UniqueID::Next();
     uniqueKey = UniqueKey::Append(uniqueKey, &NonAntialiasShapeType, 1);
+  }
+  if (preferTriangles) {
+    // Same geometry, different representation: without this a cached mask would answer a
+    // request that needs triangles.
+    static const auto PreferTrianglesShapeType = UniqueID::Next();
+    uniqueKey = UniqueKey::Append(uniqueKey, &PreferTrianglesShapeType, 1);
   }
   auto bounds = isInverseFillType ? clipBounds : shapeBounds;
   bounds.roundOut();
@@ -249,7 +256,8 @@ std::shared_ptr<GPUShapeProxy> ProxyProvider::createGPUShapeProxy(std::shared_pt
   auto width = FloatSaturateToInt(bounds.width());
   auto height = FloatSaturateToInt(bounds.height());
   shape = Shape::ApplyMatrix(shape, Matrix::MakeTrans(-bounds.x(), -bounds.y()));
-  auto rasterizer = std::make_unique<ShapeRasterizer>(width, height, std::move(shape), aaType);
+  auto rasterizer =
+      std::make_unique<ShapeRasterizer>(width, height, std::move(shape), aaType, preferTriangles);
   std::unique_ptr<DataSource<ShapeBuffer>> dataSource = nullptr;
 #ifdef TGFX_USE_THREADS
   if (!(renderFlags & RenderFlags::DisableAsyncTask) && rasterizer->asyncSupport()) {

@@ -28,18 +28,21 @@
 
 namespace tgfx {
 PlacementPtr<ShapeDrawOp> ShapeDrawOp::Make(std::shared_ptr<GPUShapeProxy> shapeProxy,
-                                            PMColor color, const Matrix& uvMatrix, AAType aaType) {
+                                            PMColor color, const Matrix& uvMatrix, AAType aaType,
+                                            const Matrix& deviceMatrix) {
   if (shapeProxy == nullptr) {
     return nullptr;
   }
   auto allocator = shapeProxy->getContext()->drawingAllocator();
-  return allocator->make<ShapeDrawOp>(allocator, std::move(shapeProxy), color, uvMatrix, aaType);
+  return allocator->make<ShapeDrawOp>(allocator, std::move(shapeProxy), color, uvMatrix, aaType,
+                                      deviceMatrix);
 }
 
 ShapeDrawOp::ShapeDrawOp(BlockAllocator* allocator, std::shared_ptr<GPUShapeProxy> proxy,
-                         PMColor color, const Matrix& uvMatrix, AAType aaType)
+                         PMColor color, const Matrix& uvMatrix, AAType aaType,
+                         const Matrix& deviceMatrix)
     : StandardDrawOp(allocator, aaType), shapeProxy(std::move(proxy)), color(color),
-      uvMatrix(uvMatrix) {
+      uvMatrix(uvMatrix), deviceMatrix(deviceMatrix) {
   auto context = shapeProxy->getContext();
   if (auto textureProxy = shapeProxy->getTextureProxy()) {
     auto maskRect = Rect::MakeWH(textureProxy->width(), textureProxy->height());
@@ -54,6 +57,9 @@ PlacementPtr<GeometryProcessor> ShapeDrawOp::onMakeGeometryProcessor(RenderTarge
     return nullptr;
   }
   auto viewMatrix = shapeProxy->getDrawingMatrix();
+  // The rotation the cached geometry was spared, applied here instead: vertices are in the
+  // shape's own space, so this puts them back where the draw asked for.
+  viewMatrix.postConcat(deviceMatrix);
   auto realUVMatrix = uvMatrix;
   realUVMatrix.preConcat(viewMatrix);
   auto vertexBuffer = shapeProxy->getTriangles();
@@ -69,9 +75,10 @@ PlacementPtr<GeometryProcessor> ShapeDrawOp::onMakeGeometryProcessor(RenderTarge
     if (!realUVMatrix.invert(&maskMatrix)) {
       return nullptr;
     }
-    static const SamplingArgs args(TileMode::Clamp, TileMode::Clamp,
-                                   SamplingOptions(FilterMode::Nearest, MipmapMode::None),
-                                   SrcRectConstraint::Fast);
+    auto filterMode = deviceMatrix.isIdentity() ? FilterMode::Nearest : FilterMode::Linear;
+    const SamplingArgs args(TileMode::Clamp, TileMode::Clamp,
+                            SamplingOptions(filterMode, MipmapMode::None),
+                            SrcRectConstraint::Fast);
     auto maskFP = TextureEffect::Make(allocator, std::move(textureProxy), args, &maskMatrix, true);
     if (maskFP == nullptr) {
       return nullptr;

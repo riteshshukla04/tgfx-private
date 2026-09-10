@@ -25,8 +25,14 @@
 namespace tgfx {
 class ShapeDrawOp : public StandardDrawOp {
  public:
+  /**
+   * deviceMatrix is the part of the draw matrix that was deliberately left out of the cached
+   * geometry — a rotation the GPU applies per draw, so an animated shape reuses one cache entry
+   * instead of being rasterized again every frame. Identity keeps the geometry fully baked.
+   */
   static PlacementPtr<ShapeDrawOp> Make(std::shared_ptr<GPUShapeProxy> shapeProxy, PMColor color,
-                                        const Matrix& uvMatrix, AAType aaType);
+                                        const Matrix& uvMatrix, AAType aaType,
+                                        const Matrix& deviceMatrix = Matrix::I());
 
   bool hasCoverage() const override;
 
@@ -44,9 +50,10 @@ class ShapeDrawOp : public StandardDrawOp {
   std::shared_ptr<VertexBufferView> maskBufferProxy = {};
   PMColor color = PMColor::Transparent();
   Matrix uvMatrix = {};
+  Matrix deviceMatrix = {};
 
   ShapeDrawOp(BlockAllocator* allocator, std::shared_ptr<GPUShapeProxy> proxy, PMColor color,
-              const Matrix& uvMatrix, AAType aaType);
+              const Matrix& uvMatrix, AAType aaType, const Matrix& deviceMatrix);
 
   friend class BlockAllocator;
 };

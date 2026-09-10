@@ -17,6 +17,8 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "OpsCompositor.h"
+#include <cmath>
+#include "core/MatrixUtils.h"
 #include "core/MeshBase.h"
 #include "core/PathRef.h"
 #include "core/VertexMesh.h"
@@ -669,17 +671,46 @@ void OpsCompositor::flushPendingShapeOps() {
     }
   }
 
-  shape = Shape::ApplyMatrix(std::move(shape), shapeMatrix);
+  // A rotation baked into the geometry changes the shape's cache key every frame, so an
+  // animated shape is rasterized again for every frame it is on screen. Bake only the scale —
+  // which the rasterizer genuinely needs, since it fixes the resolution — and let the GPU apply
+  // the rotation per draw, so the frames after the first are cache hits. Anything the split
+  // cannot reproduce exactly (skew, non-uniform scale) keeps the fully baked path.
+  auto bakeMatrix = shapeMatrix;
+  auto deviceMatrix = Matrix::I();
+  bool preferTriangles = false;
+  if (count == 1 && !shapeMatrix.isScaleTranslate()) {
+    auto scale = shapeMatrix.getMaxScale();
+    if (scale > 0.0f && std::isfinite(scale)) {
+      auto candidateBake = Matrix::MakeScale(scale, scale);
+      auto inverseBake = Matrix::MakeScale(1.0f / scale, 1.0f / scale);
+      auto candidateDevice = shapeMatrix;
+      candidateDevice.preConcat(inverseBake);
+      // What is left must be a rigid rotation, or the geometry would be stretched by a factor
+      // the rasterized coverage never accounted for.
+      if (MatrixUtils::PreservesRightAngles(candidateDevice) &&
+          FloatNearlyEqual(candidateDevice.getMaxScale(), 1.0f) &&
+          FloatNearlyEqual(candidateDevice.getMinScale(), 1.0f)) {
+        bakeMatrix = candidateBake;
+        deviceMatrix = candidateDevice;
+        // A mask can only follow the rotation by being resampled; triangles follow it exactly.
+        preferTriangles = true;
+      }
+    }
+  }
+
+  shape = Shape::ApplyMatrix(std::move(shape), bakeMatrix);
   if (!shape) {
     return;
   }
 
   auto aaType = getAAType(pendingBrush);
-  auto shapeProxy = proxyProvider()->createGPUShapeProxy(shape, aaType, clipBounds, renderFlags);
+  auto shapeProxy =
+      proxyProvider()->createGPUShapeProxy(shape, aaType, clipBounds, renderFlags, preferTriangles);
 
   if (count == 1) {
     auto dstColor = ToPMColor(pendingBrush.color, dstColorSpace);
-    auto drawOp = ShapeDrawOp::Make(std::move(shapeProxy), dstColor, uvMatrix, aaType);
+    auto drawOp = ShapeDrawOp::Make(std::move(shapeProxy), dstColor, uvMatrix, aaType, deviceMatrix);
     addDrawOp(std::move(drawOp), pendingClip, pendingBrush, localBounds, deviceBounds, drawScale);
   } else {
     const Color* colorsPtr = pendingBrush.shader ? nullptr : shapeColors.data();
