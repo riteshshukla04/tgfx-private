@@ -86,7 +86,8 @@ class ProxyProvider {
    */
   std::shared_ptr<GPUShapeProxy> createGPUShapeProxy(std::shared_ptr<Shape> shape, AAType aaType,
                                                      const Rect& clipBounds,
-                                                     uint32_t renderFlags = 0);
+                                                     uint32_t renderFlags = 0,
+                                                     bool preferTriangles = false);
 
   /**
    * Creates a StencilCoverPathProxy for the given Shape. The shape's geometry is

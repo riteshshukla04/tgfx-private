@@ -22,8 +22,10 @@
 #include "utils/Log.h"
 
 namespace tgfx {
-ShapeRasterizer::ShapeRasterizer(int width, int height, std::shared_ptr<Shape> shape, AAType aaType)
-    : width(width), height(height), shape(std::move(shape)), aaType(aaType) {
+ShapeRasterizer::ShapeRasterizer(int width, int height, std::shared_ptr<Shape> shape, AAType aaType,
+                                 bool preferTriangles)
+    : width(width), height(height), shape(std::move(shape)), aaType(aaType),
+      preferTriangles(preferTriangles) {
 }
 
 bool ShapeRasterizer::asyncSupport() const {
@@ -40,12 +42,16 @@ std::shared_ptr<ShapeBuffer> ShapeRasterizer::getData() const {
     finalPath.reset();
     finalPath.addRect(Rect::MakeWH(width, height));
   }
-  if (PathTriangulator::ShouldTriangulatePath(finalPath)) {
+  if (preferTriangles || PathTriangulator::ShouldTriangulatePath(finalPath)) {
     auto triangles = makeTriangles(finalPath);
-    if (triangles == nullptr) {
+    if (triangles != nullptr) {
+      return std::make_shared<ShapeBuffer>(triangles, nullptr);
+    }
+    // A shape that cannot be triangulated (an unfillable or invisible path) still has to reach
+    // the mask path, which is why this falls through rather than failing the whole draw.
+    if (!preferTriangles) {
       return nullptr;
     }
-    return std::make_shared<ShapeBuffer>(triangles, nullptr);
   }
   auto imageBuffer = makeImageBuffer(finalPath);
   if (imageBuffer == nullptr) {
