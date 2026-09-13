@@ -212,18 +212,24 @@ class ProxyProvider {
  private:
   Context* context = nullptr;
   ResourceKeyMap<std::weak_ptr<ResourceProxy>> proxyMap = {};
-  // Keyed proxies found or created since the last flush, and the previous flush's set. Holding
-  // them one extra frame keeps a resource that is drawn every frame referenced, so a lookup hits
-  // the live proxy instead of bouncing the resource through the cache's purgeable list and
-  // re-wrapping it (measured at ~20% of a 900-path frame).
+  // Resident keyed proxies found or wrapped since the last flush, and the previous flush's set.
+  // Holding them one extra frame keeps a resource that is drawn every frame referenced, so a
+  // lookup hits the live proxy instead of bouncing the resource through the cache's purgeable
+  // list and re-wrapping it (measured at ~20% of a 900-path frame). The cost is that cache-limit
+  // and expiration enforcement lag one frame behind while lastFrameProxies pins a frame's working
+  // set, and that proxies created under RenderFlags::DisableCache are still pinned for that one
+  // frame; Context releases the set before any explicit purge or limit change.
   std::vector<std::shared_ptr<ResourceProxy>> frameProxies = {};
   std::vector<std::shared_ptr<ResourceProxy>> lastFrameProxies = {};
+  uint32_t frameStamp = 1;
   std::shared_ptr<GPUBufferProxy> sharedVertexBuffer = nullptr;
   std::vector<std::shared_ptr<Task>> sharedVertexBufferTasks = {};
   std::shared_ptr<GPUBufferProxy> sharedInstanceBuffer = nullptr;
   std::shared_ptr<GPUBufferProxy> findOrWrapGPUBufferProxy(const UniqueKey& uniqueKey);
 
   void addResourceProxy(std::shared_ptr<ResourceProxy> proxy, const UniqueKey& uniqueKey = {});
+
+  void retainProxy(std::shared_ptr<ResourceProxy> proxy);
 
   void uploadSharedVertexBuffer(std::shared_ptr<Data> data);
 

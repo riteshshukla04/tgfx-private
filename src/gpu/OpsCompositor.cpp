@@ -188,6 +188,11 @@ static bool MatrixOnlyDiffersInTranslation(const Matrix& a, const Matrix& b) {
 void OpsCompositor::drawShape(std::shared_ptr<Shape> shape, const Matrix& matrix,
                               const ClipStack& clip, const Brush& brush) {
   DEBUG_ASSERT(shape != nullptr);
+  // Every pending run takes its brush from its first record, so an invisible shape must be
+  // rejected here rather than at addDrawOp, or it would drop the visible shapes batched after it.
+  if (brush.nothingToDraw()) {
+    return;
+  }
   if (shouldUseStencilCover(brush)) {
     if (!canAppend(PendingOpType::StencilCoverPath, clip, brush)) {
       flushPendingOps(PendingOpType::StencilCoverPath, clip, brush);
@@ -205,29 +210,30 @@ void OpsCompositor::drawShape(std::shared_ptr<Shape> shape, const Matrix& matrix
   if (canAppend(PendingOpType::Shape, clip, brush) && pendingShape &&
       pendingShape->getUniqueKey() == shape->getUniqueKey() &&
       MatrixOnlyDiffersInTranslation(pendingShapeMatrix, matrix)) {
-    // Offset has two sources, both in device space:
-    // 1. Canvas matrix translation difference (already in device space).
-    // 2. Shape bounds difference (in local space, needs matrix linear transform to device space).
-    //    This occurs when tryAddSimplifiedMatrixShape encodes position into shape bounds
-    //    instead of the canvas matrix.
-    auto dx = matrix.getTranslateX() - pendingShapeMatrix.getTranslateX();
-    auto dy = matrix.getTranslateY() - pendingShapeMatrix.getTranslateY();
-    auto baseBounds = pendingShape->getBounds();
-    auto newBounds = shape->getBounds();
-    auto boundsDx = newBounds.left - baseBounds.left;
-    auto boundsDy = newBounds.top - baseBounds.top;
-    if (boundsDx != 0.0f || boundsDy != 0.0f) {
-      // Map local-space bounds offset to device space through the matrix linear part.
-      dx += matrix.getScaleX() * boundsDx + matrix.getSkewX() * boundsDy;
-      dy += matrix.getSkewY() * boundsDx + matrix.getScaleY() * boundsDy;
-    }
-    pendingShapeOffsets.emplace_back(dx, dy);
-    pendingShapeColors.emplace_back(brush.color);
+    appendShapeInstance(*shape, matrix, brush.color);
     return;
   }
   if (canBatchMultiShape(shape, brush)) {
     if (canAppend(PendingOpType::MultiShape, clip, brush) &&
         MatrixOnlyDiffersInTranslation(pendingMultiMatrices.front(), matrix)) {
+      // A repeat of the last member starts an instanced run instead: pop it, flush the batch
+      // ahead of it, and seed the pending shape from it. Every member shares the batch's linear
+      // part, so the popped matrix already differs from this one only in translation.
+      if (pendingMultiShapes.back()->getUniqueKey() == shape->getUniqueKey()) {
+        auto lastShape = std::move(pendingMultiShapes.back());
+        auto lastMatrix = pendingMultiMatrices.back();
+        auto lastColor = pendingMultiColors.back();
+        pendingMultiShapes.pop_back();
+        pendingMultiMatrices.pop_back();
+        pendingMultiColors.pop_back();
+        flushPendingOps(PendingOpType::Shape, clip, brush);
+        pendingShape = std::move(lastShape);
+        pendingShapeMatrix = lastMatrix;
+        pendingShapeOffsets.emplace_back(0.0f, 0.0f);
+        pendingShapeColors.emplace_back(lastColor);
+        appendShapeInstance(*shape, matrix, brush.color);
+        return;
+      }
       pendingMultiShapes.emplace_back(std::move(shape));
       pendingMultiMatrices.emplace_back(matrix);
       pendingMultiColors.emplace_back(brush.color);
@@ -258,6 +264,28 @@ void OpsCompositor::drawShape(std::shared_ptr<Shape> shape, const Matrix& matrix
   pendingShapeMatrix = matrix;
   pendingShapeOffsets.emplace_back(0.0f, 0.0f);
   pendingShapeColors.emplace_back(brush.color);
+}
+
+void OpsCompositor::appendShapeInstance(const Shape& shape, const Matrix& matrix,
+                                        const Color& color) {
+  // Offset has two sources, both in device space:
+  // 1. Canvas matrix translation difference (already in device space).
+  // 2. Shape bounds difference (in local space, needs matrix linear transform to device space).
+  //    This occurs when tryAddSimplifiedMatrixShape encodes position into shape bounds
+  //    instead of the canvas matrix.
+  auto dx = matrix.getTranslateX() - pendingShapeMatrix.getTranslateX();
+  auto dy = matrix.getTranslateY() - pendingShapeMatrix.getTranslateY();
+  auto baseBounds = pendingShape->getBounds();
+  auto newBounds = shape.getBounds();
+  auto boundsDx = newBounds.left - baseBounds.left;
+  auto boundsDy = newBounds.top - baseBounds.top;
+  if (boundsDx != 0.0f || boundsDy != 0.0f) {
+    // Map local-space bounds offset to device space through the matrix linear part.
+    dx += matrix.getScaleX() * boundsDx + matrix.getSkewX() * boundsDy;
+    dy += matrix.getSkewY() * boundsDx + matrix.getScaleY() * boundsDy;
+  }
+  pendingShapeOffsets.emplace_back(dx, dy);
+  pendingShapeColors.emplace_back(color);
 }
 
 bool OpsCompositor::canBatchMultiShape(const std::shared_ptr<Shape>& shape,
@@ -697,7 +725,8 @@ static bool SplitRotation(const Matrix& shapeMatrix, Matrix* bakeMatrix, Matrix*
 }
 
 void OpsCompositor::flushPendingMultiShapeOps() {
-  DEBUG_ASSERT(pendingMultiShapes.size() >= 2);
+  // A single member is legal: drawShape pops a repeated tail into an instanced run.
+  DEBUG_ASSERT(!pendingMultiShapes.empty());
   DEBUG_ASSERT(pendingMultiShapes.size() == pendingMultiMatrices.size());
   DEBUG_ASSERT(pendingMultiShapes.size() == pendingMultiColors.size());
   auto shapes = std::move(pendingMultiShapes);

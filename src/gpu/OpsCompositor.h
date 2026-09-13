@@ -205,6 +205,7 @@ class OpsCompositor {
   void flushPendingShapeOps();
   void flushPendingMultiShapeOps();
   void flushPendingStencilCoverOps();
+  void appendShapeInstance(const Shape& shape, const Matrix& matrix, const Color& color);
   bool canBatchMultiShape(const std::shared_ptr<Shape>& shape, const Brush& brush) const;
   bool shouldUseStencilCover(const Brush& brush) const;
   void resetPendingOps(PendingOpType currentType = PendingOpType::Unknown,

@@ -54,6 +54,10 @@ class ResourceProxy {
 
   ResourceProxy() = default;
 
+ private:
+  // Frame stamp of the last ProxyProvider retention, so a proxy is retained once per frame.
+  uint32_t retainedFrame = 0;
+
   friend class ResourceTask;
   friend class ShapeBufferUploadTask;
   friend class ProxyProvider;

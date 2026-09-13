@@ -653,6 +653,7 @@ std::shared_ptr<RenderTargetProxy> ProxyProvider::createRenderTargetProxy(
 void ProxyProvider::purgeExpiredProxies() {
   lastFrameProxies.swap(frameProxies);
   frameProxies.clear();
+  frameStamp++;
   for (auto item = proxyMap.begin(); item != proxyMap.end();) {
     if (item->second.expired()) {
       item = proxyMap.erase(item);
@@ -711,7 +712,7 @@ std::shared_ptr<ResourceProxy> ProxyProvider::findProxy(const UniqueKey& uniqueK
   if (result != proxyMap.end()) {
     auto proxy = result->second.lock();
     if (proxy != nullptr) {
-      frameProxies.push_back(proxy);
+      retainProxy(proxy);
       return proxy;
     }
     proxyMap.erase(result);
@@ -724,12 +725,23 @@ void ProxyProvider::releaseRetainedProxies() {
   lastFrameProxies.clear();
 }
 
+void ProxyProvider::retainProxy(std::shared_ptr<ResourceProxy> proxy) {
+  // A proxy whose resource is still pending must not be retained: the extra reference would
+  // defeat ResourceTask's skip when nothing ended up drawing it (empty clip), uploading and
+  // caching a resource no one uses. Resident proxies are retained once per frame.
+  if (proxy->resource == nullptr || proxy->retainedFrame == frameStamp) {
+    return;
+  }
+  proxy->retainedFrame = frameStamp;
+  frameProxies.push_back(std::move(proxy));
+}
+
 void ProxyProvider::addResourceProxy(std::shared_ptr<ResourceProxy> proxy,
                                      const UniqueKey& uniqueKey) {
   proxy->context = context;
   if (!uniqueKey.empty()) {
     proxyMap[uniqueKey] = proxy;
-    frameProxies.push_back(std::move(proxy));
+    retainProxy(std::move(proxy));
   }
 }
 
