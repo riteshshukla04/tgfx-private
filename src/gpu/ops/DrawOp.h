@@ -46,6 +46,7 @@ class DrawOp {
     HairlineLineOp,
     HairlineQuadOp,
     ShapeInstancedDrawOp,
+    ShapeMultiDrawOp,
     StencilCoverPathDrawOp,
   };
 

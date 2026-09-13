@@ -184,9 +184,15 @@ class ProxyProvider {
       BackingFit backingFit = BackingFit::Exact, uint32_t renderFlags = 0);
 
   /*
-   * Purges all unreferenced proxies.
+   * Purges all unreferenced proxies and rolls the frame-retention window forward: keyed proxies
+   * touched during the flush that just ended stay alive through the next flush.
    */
   void purgeExpiredProxies();
+
+  /**
+   * Drops the proxies retained across frames so an explicit purge can release their resources.
+   */
+  void releaseRetainedProxies();
 
   /**
    * Flushes the pending shared vertex buffer to upload the vertices to the GPU.
@@ -206,6 +212,12 @@ class ProxyProvider {
  private:
   Context* context = nullptr;
   ResourceKeyMap<std::weak_ptr<ResourceProxy>> proxyMap = {};
+  // Keyed proxies found or created since the last flush, and the previous flush's set. Holding
+  // them one extra frame keeps a resource that is drawn every frame referenced, so a lookup hits
+  // the live proxy instead of bouncing the resource through the cache's purgeable list and
+  // re-wrapping it (measured at ~20% of a 900-path frame).
+  std::vector<std::shared_ptr<ResourceProxy>> frameProxies = {};
+  std::vector<std::shared_ptr<ResourceProxy>> lastFrameProxies = {};
   std::shared_ptr<GPUBufferProxy> sharedVertexBuffer = nullptr;
   std::vector<std::shared_ptr<Task>> sharedVertexBufferTasks = {};
   std::shared_ptr<GPUBufferProxy> sharedInstanceBuffer = nullptr;

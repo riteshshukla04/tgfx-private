@@ -250,6 +250,14 @@ std::shared_ptr<GPUShapeProxy> ProxyProvider::createGPUShapeProxy(std::shared_pt
   auto textureKey = UniqueKey::Append(uniqueKey, &TextureShapeType, 1);
   auto textureProxy = findOrWrapTextureProxy(textureKey);
   if (triangleProxy != nullptr || textureProxy != nullptr) {
+    // The upload task fills exactly one of the pair; once it has, the other proxy stays empty
+    // forever. Dropping it here keeps ShapeDrawOp from building a mask quad for triangles that
+    // are already on the GPU.
+    if (triangleProxy != nullptr && triangleProxy->getBuffer() != nullptr) {
+      textureProxy = nullptr;
+    } else if (textureProxy != nullptr && textureProxy->getTextureView() != nullptr) {
+      triangleProxy = nullptr;
+    }
     return std::make_shared<GPUShapeProxy>(drawingMatrix, std::move(triangleProxy),
                                            std::move(textureProxy));
   }
@@ -643,6 +651,8 @@ std::shared_ptr<RenderTargetProxy> ProxyProvider::createRenderTargetProxy(
 }
 
 void ProxyProvider::purgeExpiredProxies() {
+  lastFrameProxies.swap(frameProxies);
+  frameProxies.clear();
   for (auto item = proxyMap.begin(); item != proxyMap.end();) {
     if (item->second.expired()) {
       item = proxyMap.erase(item);
@@ -701,6 +711,7 @@ std::shared_ptr<ResourceProxy> ProxyProvider::findProxy(const UniqueKey& uniqueK
   if (result != proxyMap.end()) {
     auto proxy = result->second.lock();
     if (proxy != nullptr) {
+      frameProxies.push_back(proxy);
       return proxy;
     }
     proxyMap.erase(result);
@@ -708,11 +719,17 @@ std::shared_ptr<ResourceProxy> ProxyProvider::findProxy(const UniqueKey& uniqueK
   return nullptr;
 }
 
+void ProxyProvider::releaseRetainedProxies() {
+  frameProxies.clear();
+  lastFrameProxies.clear();
+}
+
 void ProxyProvider::addResourceProxy(std::shared_ptr<ResourceProxy> proxy,
                                      const UniqueKey& uniqueKey) {
   proxy->context = context;
   if (!uniqueKey.empty()) {
     proxyMap[uniqueKey] = proxy;
+    frameProxies.push_back(std::move(proxy));
   }
 }
 

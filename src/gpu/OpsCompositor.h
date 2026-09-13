@@ -58,6 +58,7 @@ enum class PendingOpType {
   Shape,
   Atlas,
   StencilCoverPath,
+  MultiShape,
 };
 
 /**
@@ -166,6 +167,12 @@ class OpsCompositor {
   Matrix pendingShapeMatrix = {};
   std::vector<Point> pendingShapeOffsets = {};
   std::vector<Color> pendingShapeColors = {};
+  // Different shapes drawn back to back with the same clip, a solid brush and matrices that
+  // differ only in translation. Flushed as one ShapeMultiDrawOp per run of shapes whose
+  // triangles are already resident; the rest keep their own ShapeDrawOp, in order.
+  std::vector<std::shared_ptr<Shape>> pendingMultiShapes = {};
+  std::vector<Matrix> pendingMultiMatrices = {};
+  std::vector<Color> pendingMultiColors = {};
   // Deferred queue for the stencil-and-cover path. NOTE: entries here are still emitted as
   // one DrawOp per shape at flush time — no instanced merge is performed yet. The queue
   // exists so that stencil-cover ops participate in the same "same clip+brush" batching
@@ -196,7 +203,9 @@ class OpsCompositor {
   void flushPendingOps(PendingOpType currentType = PendingOpType::Unknown,
                        ClipStack currentClip = {}, Brush currentBrush = {});
   void flushPendingShapeOps();
+  void flushPendingMultiShapeOps();
   void flushPendingStencilCoverOps();
+  bool canBatchMultiShape(const std::shared_ptr<Shape>& shape, const Brush& brush) const;
   bool shouldUseStencilCover(const Brush& brush) const;
   void resetPendingOps(PendingOpType currentType = PendingOpType::Unknown,
                        ClipStack currentClip = {}, Brush currentBrush = {});

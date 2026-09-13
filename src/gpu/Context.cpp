@@ -194,11 +194,13 @@ void Context::setResourceExpirationFrames(size_t frames) {
 
 void Context::purgeResourcesNotUsedSince(std::chrono::steady_clock::time_point purgeTime) {
   ASSERT_OWNER_THREAD;
+  _proxyProvider->releaseRetainedProxies();
   _resourceCache->purgeNotUsedSince(purgeTime);
 }
 
 bool Context::purgeResourcesUntilMemoryTo(size_t bytesLimit) {
   ASSERT_OWNER_THREAD;
+  _proxyProvider->releaseRetainedProxies();
   return _resourceCache->purgeUntilMemoryTo(bytesLimit);
 }
 }  // namespace tgfx
