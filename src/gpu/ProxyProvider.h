@@ -184,9 +184,15 @@ class ProxyProvider {
       BackingFit backingFit = BackingFit::Exact, uint32_t renderFlags = 0);
 
   /*
-   * Purges all unreferenced proxies.
+   * Purges all unreferenced proxies and rolls the frame-retention window forward: keyed proxies
+   * touched during the flush that just ended stay alive through the next flush.
    */
   void purgeExpiredProxies();
+
+  /**
+   * Drops the proxies retained across frames so an explicit purge can release their resources.
+   */
+  void releaseRetainedProxies();
 
   /**
    * Flushes the pending shared vertex buffer to upload the vertices to the GPU.
@@ -206,12 +212,24 @@ class ProxyProvider {
  private:
   Context* context = nullptr;
   ResourceKeyMap<std::weak_ptr<ResourceProxy>> proxyMap = {};
+  // Resident keyed proxies found or wrapped since the last flush, and the previous flush's set.
+  // Holding them one extra frame keeps a resource that is drawn every frame referenced, so a
+  // lookup hits the live proxy instead of bouncing the resource through the cache's purgeable
+  // list and re-wrapping it (measured at ~20% of a 900-path frame). The cost is that cache-limit
+  // and expiration enforcement lag one frame behind while lastFrameProxies pins a frame's working
+  // set, and that proxies created under RenderFlags::DisableCache are still pinned for that one
+  // frame; Context releases the set before any explicit purge or limit change.
+  std::vector<std::shared_ptr<ResourceProxy>> frameProxies = {};
+  std::vector<std::shared_ptr<ResourceProxy>> lastFrameProxies = {};
+  uint32_t frameStamp = 1;
   std::shared_ptr<GPUBufferProxy> sharedVertexBuffer = nullptr;
   std::vector<std::shared_ptr<Task>> sharedVertexBufferTasks = {};
   std::shared_ptr<GPUBufferProxy> sharedInstanceBuffer = nullptr;
   std::shared_ptr<GPUBufferProxy> findOrWrapGPUBufferProxy(const UniqueKey& uniqueKey);
 
   void addResourceProxy(std::shared_ptr<ResourceProxy> proxy, const UniqueKey& uniqueKey = {});
+
+  void retainProxy(std::shared_ptr<ResourceProxy> proxy);
 
   void uploadSharedVertexBuffer(std::shared_ptr<Data> data);
 

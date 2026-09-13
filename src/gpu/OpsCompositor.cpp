@@ -37,6 +37,7 @@
 #include "gpu/ops/MeshDrawOp.h"
 #include "gpu/ops/ShapeDrawOp.h"
 #include "gpu/ops/ShapeInstancedDrawOp.h"
+#include "gpu/ops/ShapeMultiDrawOp.h"
 #include "gpu/ops/StencilCoverPathDrawOp.h"
 #include "gpu/processors/DeviceSpaceTextureEffect.h"
 #include "gpu/processors/RRectEffect.h"
@@ -187,6 +188,11 @@ static bool MatrixOnlyDiffersInTranslation(const Matrix& a, const Matrix& b) {
 void OpsCompositor::drawShape(std::shared_ptr<Shape> shape, const Matrix& matrix,
                               const ClipStack& clip, const Brush& brush) {
   DEBUG_ASSERT(shape != nullptr);
+  // Every pending run takes its brush from its first record, so an invisible shape must be
+  // rejected here rather than at addDrawOp, or it would drop the visible shapes batched after it.
+  if (brush.nothingToDraw()) {
+    return;
+  }
   if (shouldUseStencilCover(brush)) {
     if (!canAppend(PendingOpType::StencilCoverPath, clip, brush)) {
       flushPendingOps(PendingOpType::StencilCoverPath, clip, brush);
@@ -204,31 +210,91 @@ void OpsCompositor::drawShape(std::shared_ptr<Shape> shape, const Matrix& matrix
   if (canAppend(PendingOpType::Shape, clip, brush) && pendingShape &&
       pendingShape->getUniqueKey() == shape->getUniqueKey() &&
       MatrixOnlyDiffersInTranslation(pendingShapeMatrix, matrix)) {
-    // Offset has two sources, both in device space:
-    // 1. Canvas matrix translation difference (already in device space).
-    // 2. Shape bounds difference (in local space, needs matrix linear transform to device space).
-    //    This occurs when tryAddSimplifiedMatrixShape encodes position into shape bounds
-    //    instead of the canvas matrix.
-    auto dx = matrix.getTranslateX() - pendingShapeMatrix.getTranslateX();
-    auto dy = matrix.getTranslateY() - pendingShapeMatrix.getTranslateY();
-    auto baseBounds = pendingShape->getBounds();
-    auto newBounds = shape->getBounds();
-    auto boundsDx = newBounds.left - baseBounds.left;
-    auto boundsDy = newBounds.top - baseBounds.top;
-    if (boundsDx != 0.0f || boundsDy != 0.0f) {
-      // Map local-space bounds offset to device space through the matrix linear part.
-      dx += matrix.getScaleX() * boundsDx + matrix.getSkewX() * boundsDy;
-      dy += matrix.getSkewY() * boundsDx + matrix.getScaleY() * boundsDy;
-    }
-    pendingShapeOffsets.emplace_back(dx, dy);
-    pendingShapeColors.emplace_back(brush.color);
+    appendShapeInstance(*shape, matrix, brush.color);
     return;
+  }
+  if (canBatchMultiShape(shape, brush)) {
+    if (canAppend(PendingOpType::MultiShape, clip, brush) &&
+        MatrixOnlyDiffersInTranslation(pendingMultiMatrices.front(), matrix)) {
+      // A repeat of the last member starts an instanced run instead: pop it, flush the batch
+      // ahead of it, and seed the pending shape from it. Every member shares the batch's linear
+      // part, so the popped matrix already differs from this one only in translation.
+      if (pendingMultiShapes.back()->getUniqueKey() == shape->getUniqueKey()) {
+        auto lastShape = std::move(pendingMultiShapes.back());
+        auto lastMatrix = pendingMultiMatrices.back();
+        auto lastColor = pendingMultiColors.back();
+        pendingMultiShapes.pop_back();
+        pendingMultiMatrices.pop_back();
+        pendingMultiColors.pop_back();
+        flushPendingOps(PendingOpType::Shape, clip, brush);
+        pendingShape = std::move(lastShape);
+        pendingShapeMatrix = lastMatrix;
+        pendingShapeOffsets.emplace_back(0.0f, 0.0f);
+        pendingShapeColors.emplace_back(lastColor);
+        appendShapeInstance(*shape, matrix, brush.color);
+        return;
+      }
+      pendingMultiShapes.emplace_back(std::move(shape));
+      pendingMultiMatrices.emplace_back(matrix);
+      pendingMultiColors.emplace_back(brush.color);
+      return;
+    }
+    // A lone pending shape of the same clip/brush class becomes the batch's first member; a
+    // pending run of one repeated shape stays on the instanced path, which draws it cheaper.
+    if (pendingType == PendingOpType::Shape && pendingShapeOffsets.size() == 1 &&
+        canAppend(PendingOpType::Shape, clip, brush) &&
+        canBatchMultiShape(pendingShape, pendingBrush) &&
+        MatrixOnlyDiffersInTranslation(pendingShapeMatrix, matrix)) {
+      pendingType = PendingOpType::MultiShape;
+      pendingMultiShapes.emplace_back(std::move(pendingShape));
+      pendingMultiMatrices.emplace_back(pendingShapeMatrix);
+      pendingMultiColors.emplace_back(pendingShapeColors.front());
+      pendingShape = nullptr;
+      pendingShapeMatrix = {};
+      pendingShapeOffsets.clear();
+      pendingShapeColors.clear();
+      pendingMultiShapes.emplace_back(std::move(shape));
+      pendingMultiMatrices.emplace_back(matrix);
+      pendingMultiColors.emplace_back(brush.color);
+      return;
+    }
   }
   flushPendingOps(PendingOpType::Shape, clip, brush);
   pendingShape = std::move(shape);
   pendingShapeMatrix = matrix;
   pendingShapeOffsets.emplace_back(0.0f, 0.0f);
   pendingShapeColors.emplace_back(brush.color);
+}
+
+void OpsCompositor::appendShapeInstance(const Shape& shape, const Matrix& matrix,
+                                        const Color& color) {
+  // Offset has two sources, both in device space:
+  // 1. Canvas matrix translation difference (already in device space).
+  // 2. Shape bounds difference (in local space, needs matrix linear transform to device space).
+  //    This occurs when tryAddSimplifiedMatrixShape encodes position into shape bounds
+  //    instead of the canvas matrix.
+  auto dx = matrix.getTranslateX() - pendingShapeMatrix.getTranslateX();
+  auto dy = matrix.getTranslateY() - pendingShapeMatrix.getTranslateY();
+  auto baseBounds = pendingShape->getBounds();
+  auto newBounds = shape.getBounds();
+  auto boundsDx = newBounds.left - baseBounds.left;
+  auto boundsDy = newBounds.top - baseBounds.top;
+  if (boundsDx != 0.0f || boundsDy != 0.0f) {
+    // Map local-space bounds offset to device space through the matrix linear part.
+    dx += matrix.getScaleX() * boundsDx + matrix.getSkewX() * boundsDy;
+    dy += matrix.getSkewY() * boundsDx + matrix.getScaleY() * boundsDy;
+  }
+  pendingShapeOffsets.emplace_back(dx, dy);
+  pendingShapeColors.emplace_back(color);
+}
+
+bool OpsCompositor::canBatchMultiShape(const std::shared_ptr<Shape>& shape,
+                                       const Brush& brush) const {
+  // ShapeMultiDrawOp shares one uv matrix across every member, so nothing may read local
+  // coordinates; dst-texture blends need a per-op copy of the destination; inverse fills bake
+  // the clip bounds into their geometry key.
+  return brush.shader == nullptr && brush.maskFilter == nullptr &&
+         !BlendModeNeedDstTexture(brush.blendMode, true) && !shape->isInverseFillType();
 }
 
 bool OpsCompositor::shouldUseStencilCover(const Brush& brush) const {
@@ -401,6 +467,9 @@ void OpsCompositor::resetPendingOps(PendingOpType type, ClipStack clip, Brush br
   pendingShapeMatrix = {};
   pendingShapeOffsets.clear();
   pendingShapeColors.clear();
+  pendingMultiShapes.clear();
+  pendingMultiMatrices.clear();
+  pendingMultiColors.clear();
   pendingStencilCoverShapes.clear();
   pendingStencilCoverMatrices.clear();
   pendingStencilCoverColors.clear();
@@ -442,6 +511,8 @@ bool OpsCompositor::canAppend(PendingOpType type, const ClipStack& clip, const B
       return pendingRRects.size() < RRectDrawOp::MaxNumRRects;
     case PendingOpType::Shape:
       return pendingShapeOffsets.size() < ShapeInstancedDrawOp::MaxNumInstances;
+    case PendingOpType::MultiShape:
+      return pendingMultiShapes.size() < ShapeMultiDrawOp::MaxNumShapes;
     case PendingOpType::StencilCoverPath:
       return pendingStencilCoverShapes.size() < StencilCoverPathDrawOp::MaxNumBatched;
     default:
@@ -480,6 +551,10 @@ void OpsCompositor::flushPendingOps(PendingOpType type, ClipStack clip, Brush br
   // Shape is handled separately with its own bounds computation.
   if (pendingType == PendingOpType::Shape) {
     flushPendingShapeOps();
+    return;
+  }
+  if (pendingType == PendingOpType::MultiShape) {
+    flushPendingMultiShapeOps();
     return;
   }
   if (pendingType == PendingOpType::StencilCoverPath) {
@@ -621,6 +696,109 @@ void OpsCompositor::flushPendingOps(PendingOpType type, ClipStack clip, Brush br
             drawScale.value_or(1.0f));
 }
 
+// A rotation baked into the geometry changes the shape's cache key every frame, so an animated
+// shape is rasterized again for every frame it is on screen. Bake only the scale — which the
+// rasterizer genuinely needs, since it fixes the resolution — and let the GPU apply the rotation
+// per draw, so the frames after the first are cache hits. Anything the split cannot reproduce
+// exactly (skew, non-uniform scale) keeps the fully baked path. Returns true when split, which
+// also asks for triangles: a mask can only follow the rotation by being resampled.
+static bool SplitRotation(const Matrix& shapeMatrix, Matrix* bakeMatrix, Matrix* deviceMatrix) {
+  if (shapeMatrix.isScaleTranslate()) {
+    return false;
+  }
+  auto scale = shapeMatrix.getMaxScale();
+  if (!(scale > 0.0f && std::isfinite(scale))) {
+    return false;
+  }
+  auto candidateDevice = shapeMatrix;
+  candidateDevice.preConcat(Matrix::MakeScale(1.0f / scale, 1.0f / scale));
+  // What is left must be a rigid rotation, or the geometry would be stretched by a factor the
+  // rasterized coverage never accounted for.
+  if (!MatrixUtils::PreservesRightAngles(candidateDevice) ||
+      !FloatNearlyEqual(candidateDevice.getMaxScale(), 1.0f) ||
+      !FloatNearlyEqual(candidateDevice.getMinScale(), 1.0f)) {
+    return false;
+  }
+  *bakeMatrix = Matrix::MakeScale(scale, scale);
+  *deviceMatrix = candidateDevice;
+  return true;
+}
+
+void OpsCompositor::flushPendingMultiShapeOps() {
+  // A single member is legal: drawShape pops a repeated tail into an instanced run.
+  DEBUG_ASSERT(!pendingMultiShapes.empty());
+  DEBUG_ASSERT(pendingMultiShapes.size() == pendingMultiMatrices.size());
+  DEBUG_ASSERT(pendingMultiShapes.size() == pendingMultiColors.size());
+  auto shapes = std::move(pendingMultiShapes);
+  auto matrices = std::move(pendingMultiMatrices);
+  auto colors = std::move(pendingMultiColors);
+  auto count = shapes.size();
+  auto clipBounds = getClipBounds(pendingClip);
+  auto aaType = getAAType(pendingBrush);
+  // canBatchMultiShape excluded every brush that needs local or device bounds (see
+  // needComputeBounds), so none are computed here.
+  std::vector<std::shared_ptr<GPUShapeProxy>> runProxies = {};
+  std::vector<Point> runOffsets = {};
+  std::vector<Color> runColors = {};
+  Matrix runMatrix = {};
+  auto flushRun = [&]() {
+    if (runProxies.empty()) {
+      return;
+    }
+    auto drawOp = ShapeMultiDrawOp::Make(std::move(runProxies), runOffsets.data(),
+                                         runColors.data(), runMatrix, aaType, dstColorSpace);
+    addDrawOp(std::move(drawOp), pendingClip, pendingBrush, std::nullopt, std::nullopt, 1.0f);
+    runProxies.clear();
+    runOffsets.clear();
+    runColors.clear();
+  };
+  for (size_t i = 0; i < count; i++) {
+    const auto& shapeMatrix = matrices[i];
+    Matrix uvMatrix = {};
+    if (!shapeMatrix.invert(&uvMatrix)) {
+      continue;
+    }
+    auto bakeMatrix = shapeMatrix;
+    auto deviceMatrix = Matrix::I();
+    bool preferTriangles = SplitRotation(shapeMatrix, &bakeMatrix, &deviceMatrix);
+    auto shape = Shape::ApplyMatrix(shapes[i], bakeMatrix);
+    if (shape == nullptr) {
+      continue;
+    }
+    auto shapeProxy = proxyProvider()->createGPUShapeProxy(shape, aaType, clipBounds, renderFlags,
+                                                           preferTriangles);
+    if (shapeProxy == nullptr) {
+      continue;
+    }
+    // Only triangles already on the GPU join a run: a fresh proxy may still turn into a mask
+    // texture when its upload task runs, and that needs ShapeDrawOp's mask pipeline.
+    if (shapeProxy->getTriangles() == nullptr) {
+      flushRun();
+      auto dstColor = ToPMColor(colors[i], dstColorSpace);
+      auto drawOp =
+          ShapeDrawOp::Make(std::move(shapeProxy), dstColor, uvMatrix, aaType, deviceMatrix);
+      addDrawOp(std::move(drawOp), pendingClip, pendingBrush, std::nullopt, std::nullopt, 1.0f);
+      continue;
+    }
+    if (runProxies.empty()) {
+      runMatrix = deviceMatrix;
+    }
+    // ShapeDrawOp places a member at deviceMatrix * (vertex + drawingTranslate). The batch draws
+    // every member as runMatrix * vertex + offset, and the members' device matrices share their
+    // linear part, so the offset carries the rotated drawing translate plus the translation
+    // difference.
+    auto tx = shapeProxy->getDrawingMatrix().getTranslateX();
+    auto ty = shapeProxy->getDrawingMatrix().getTranslateY();
+    runOffsets.emplace_back(runMatrix.getScaleX() * tx + runMatrix.getSkewX() * ty +
+                                deviceMatrix.getTranslateX() - runMatrix.getTranslateX(),
+                            runMatrix.getSkewY() * tx + runMatrix.getScaleY() * ty +
+                                deviceMatrix.getTranslateY() - runMatrix.getTranslateY());
+    runColors.emplace_back(colors[i]);
+    runProxies.emplace_back(std::move(shapeProxy));
+  }
+  flushRun();
+}
+
 void OpsCompositor::flushPendingShapeOps() {
   DEBUG_ASSERT(pendingShape != nullptr);
   DEBUG_ASSERT(!pendingShapeOffsets.empty());
@@ -671,33 +849,10 @@ void OpsCompositor::flushPendingShapeOps() {
     }
   }
 
-  // A rotation baked into the geometry changes the shape's cache key every frame, so an
-  // animated shape is rasterized again for every frame it is on screen. Bake only the scale —
-  // which the rasterizer genuinely needs, since it fixes the resolution — and let the GPU apply
-  // the rotation per draw, so the frames after the first are cache hits. Anything the split
-  // cannot reproduce exactly (skew, non-uniform scale) keeps the fully baked path.
+  // Instances share one mesh, so only a lone shape can leave its rotation to the GPU.
   auto bakeMatrix = shapeMatrix;
   auto deviceMatrix = Matrix::I();
-  bool preferTriangles = false;
-  if (count == 1 && !shapeMatrix.isScaleTranslate()) {
-    auto scale = shapeMatrix.getMaxScale();
-    if (scale > 0.0f && std::isfinite(scale)) {
-      auto candidateBake = Matrix::MakeScale(scale, scale);
-      auto inverseBake = Matrix::MakeScale(1.0f / scale, 1.0f / scale);
-      auto candidateDevice = shapeMatrix;
-      candidateDevice.preConcat(inverseBake);
-      // What is left must be a rigid rotation, or the geometry would be stretched by a factor
-      // the rasterized coverage never accounted for.
-      if (MatrixUtils::PreservesRightAngles(candidateDevice) &&
-          FloatNearlyEqual(candidateDevice.getMaxScale(), 1.0f) &&
-          FloatNearlyEqual(candidateDevice.getMinScale(), 1.0f)) {
-        bakeMatrix = candidateBake;
-        deviceMatrix = candidateDevice;
-        // A mask can only follow the rotation by being resampled; triangles follow it exactly.
-        preferTriangles = true;
-      }
-    }
-  }
+  bool preferTriangles = count == 1 && SplitRotation(shapeMatrix, &bakeMatrix, &deviceMatrix);
 
   shape = Shape::ApplyMatrix(std::move(shape), bakeMatrix);
   if (!shape) {

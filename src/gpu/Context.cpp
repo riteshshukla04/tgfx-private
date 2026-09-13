@@ -179,6 +179,7 @@ size_t Context::cacheLimit() const {
 
 void Context::setCacheLimit(size_t bytesLimit) {
   ASSERT_OWNER_THREAD;
+  _proxyProvider->releaseRetainedProxies();
   _resourceCache->setCacheLimit(bytesLimit);
 }
 
@@ -189,16 +190,19 @@ size_t Context::resourceExpirationFrames() const {
 
 void Context::setResourceExpirationFrames(size_t frames) {
   ASSERT_OWNER_THREAD;
+  _proxyProvider->releaseRetainedProxies();
   _resourceCache->setExpirationFrames(frames);
 }
 
 void Context::purgeResourcesNotUsedSince(std::chrono::steady_clock::time_point purgeTime) {
   ASSERT_OWNER_THREAD;
+  _proxyProvider->releaseRetainedProxies();
   _resourceCache->purgeNotUsedSince(purgeTime);
 }
 
 bool Context::purgeResourcesUntilMemoryTo(size_t bytesLimit) {
   ASSERT_OWNER_THREAD;
+  _proxyProvider->releaseRetainedProxies();
   return _resourceCache->purgeUntilMemoryTo(bytesLimit);
 }
 }  // namespace tgfx
