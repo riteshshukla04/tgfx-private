@@ -30,6 +30,7 @@
 
 namespace tgfx {
 class Shader;
+struct RuntimeShaderSource;
 class TextureProxy;
 enum class SrcRectConstraint;
 
@@ -123,6 +124,20 @@ class ImageFilter {
   static std::shared_ptr<ImageFilter> Runtime(std::shared_ptr<RuntimeEffect> effect);
 
   /**
+   * Creates a filter that runs the given runtime shader over the input image. The input is bound
+   * as the shader's only child, so the body samples it with TGFX_CHILD_0(coord), where coord is
+   * in input-image pixels and fragCoord is the pixel being produced. source.children must be
+   * empty. The output bounds equal the input bounds; sampleRadiusPx is the farthest the body
+   * samples from fragCoord, so the caller renders that much extra input around a clip. Samples
+   * outside the input are resolved with tileMode. Returns nullptr if the body is empty, children
+   * are given, or sampleRadiusPx is negative or not finite. A shader that fails to compile
+   * reports through Context::setErrorCallback and draws nothing.
+   */
+  static std::shared_ptr<ImageFilter> RuntimeShader(RuntimeShaderSource source,
+                                                    float sampleRadiusPx = 0,
+                                                    TileMode tileMode = TileMode::Clamp);
+
+  /**
    * Creates a filter that blends a shader with the input image using the specified blend mode.
    * The input image serves as the destination (dst), and the shader is evaluated per-pixel to
    * produce the source (src). The output bounds are the same as the input image.
@@ -141,7 +156,7 @@ class ImageFilter {
   Rect filterBounds(const Rect& rect, MapDirection mapDirection = MapDirection::Forward) const;
 
  protected:
-  enum class Type { Blur, DropShadow, InnerShadow, Color, Compose, Runtime, Blend };
+  enum class Type { Blur, DropShadow, InnerShadow, Color, Compose, Runtime, Blend, RuntimeShader };
 
   /**
    * Returns the type of this image filter.
