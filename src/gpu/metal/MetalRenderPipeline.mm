@@ -126,9 +126,14 @@ bool MetalRenderPipeline::createPipelineState(MetalGPU* gpu,
                                                                  constantValues:constants
                                                                           error:&funcError];
       [constants release];
-      if (funcError) {
+      if (funcError && metalDescriptor.fragmentFunction == nil) {
+        gpu->reportError(
+            {RenderErrorStage::Pipeline, funcError.localizedDescription.UTF8String, {}});
         LOGE("Metal fragment function creation error: %s",
              funcError.localizedDescription.UTF8String);
+        [metalDescriptor.vertexFunction release];
+        [metalDescriptor release];
+        return false;
       }
     } else {
       metalDescriptor.fragmentFunction =
@@ -137,6 +142,8 @@ bool MetalRenderPipeline::createPipelineState(MetalGPU* gpu,
   }
 
   if (metalDescriptor.vertexFunction == nil || metalDescriptor.fragmentFunction == nil) {
+    gpu->reportError(
+        {RenderErrorStage::Pipeline, "Vertex or fragment entry point is missing.", {}});
     LOGE("Metal pipeline creation error: vertex or fragment function is nil");
     [metalDescriptor.vertexFunction release];
     [metalDescriptor.fragmentFunction release];
@@ -170,6 +177,10 @@ bool MetalRenderPipeline::createPipelineState(MetalGPU* gpu,
   [metalDescriptor release];
 
   if (!pipelineState) {
+    gpu->reportError({RenderErrorStage::Pipeline,
+                      error ? error.localizedDescription.UTF8String
+                            : "Metal returned no render pipeline or diagnostic.",
+                      {}});
     if (error) {
       LOGE("Metal pipeline creation error: %s", error.localizedDescription.UTF8String);
     }

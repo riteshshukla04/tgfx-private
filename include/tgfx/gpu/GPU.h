@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include "tgfx/core/YUVColorSpace.h"
 #include "tgfx/gpu/Backend.h"
@@ -26,6 +27,7 @@
 #include "tgfx/gpu/GPUFeatures.h"
 #include "tgfx/gpu/GPUInfo.h"
 #include "tgfx/gpu/GPULimits.h"
+#include "tgfx/gpu/RenderError.h"
 #include "tgfx/gpu/RenderPipeline.h"
 #include "tgfx/gpu/Sampler.h"
 #include "tgfx/gpu/ShaderModule.h"
@@ -159,5 +161,16 @@ class GPU {
    * Creates a command encoder that can be used to encode commands to be issued to the GPU.
    */
   virtual std::shared_ptr<CommandEncoder> createCommandEncoder() = 0;
+
+  /** Delivers a backend failure synchronously on the context's owning thread. */
+  void reportError(const RenderError& error) const {
+    if (errorCallback) {
+      errorCallback(error);
+    }
+  }
+
+ private:
+  std::function<void(const RenderError&)> errorCallback = {};
+  friend class Context;
 };
 }  // namespace tgfx

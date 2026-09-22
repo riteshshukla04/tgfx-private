@@ -144,10 +144,10 @@ std::string PreprocessGLSL(const std::string& glslCode) {
   return result;
 }
 
-std::vector<uint32_t> CompileGLSLToSPIRV(const shaderc::Compiler* compiler,
-                                         const std::string& glslCode, ShaderStage stage) {
+ShaderCompileResult CompileGLSLToSPIRV(const shaderc::Compiler* compiler,
+                                       const std::string& glslCode, ShaderStage stage) {
   if (compiler == nullptr) {
-    return {};
+    return {{}, "Shader compiler is unavailable."};
   }
   shaderc::CompileOptions options;
   options.SetOptimizationLevel(shaderc_optimization_level_performance);
@@ -162,10 +162,10 @@ std::vector<uint32_t> CompileGLSLToSPIRV(const shaderc::Compiler* compiler,
   if (spvResult.GetCompilationStatus() != shaderc_compilation_status_success) {
     LOGE("GLSL to SPIR-V compilation error: %s", spvResult.GetErrorMessage().c_str());
     LOGE("GLSL (first 512 chars):\n%.512s", glslCode.c_str());
-    return {};
+    return {{}, spvResult.GetErrorMessage()};
   }
 
-  return {spvResult.cbegin(), spvResult.cend()};
+  return {{spvResult.cbegin(), spvResult.cend()}, {}};
 }
 
 }  // namespace tgfx

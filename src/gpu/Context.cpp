@@ -49,6 +49,7 @@ Context::Context(Device* device, GPU* gpu) : _device(device), _gpu(gpu) {
 }
 
 Context::~Context() {
+  _gpu->errorCallback = {};
   delete _atlasManager;
   delete _drawingManager;
   delete _globalCache;
@@ -56,6 +57,11 @@ Context::~Context() {
   delete _resourceCache;
   delete _shaderCaps;
   delete _atlasStrikeCache;
+}
+
+void Context::setErrorCallback(std::function<void(const RenderError&)> callback) {
+  ASSERT_OWNER_THREAD;
+  _gpu->errorCallback = std::move(callback);
 }
 
 Backend Context::backend() const {

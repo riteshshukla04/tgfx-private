@@ -369,7 +369,6 @@ if (TGFX_USE_VULKAN)
     list(APPEND TGFX_STATIC_VENDORS shaderc SPIRV-Cross)
     list(APPEND TGFX_INCLUDES third_party/shaderc/libshaderc/include)
     list(APPEND TGFX_INCLUDES third_party/SPIRV-Cross)
-    list(APPEND TGFX_DEFINES SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS)
 elseif (TGFX_USE_OPENGL)
     file(GLOB GFX_PLATFORM_FILES src/gpu/opengl/*.*)
     list(APPEND TGFX_FILES ${GFX_PLATFORM_FILES})
@@ -414,7 +413,9 @@ elseif (APPLE)
         list(APPEND TGFX_STATIC_VENDORS shaderc SPIRV-Cross)
         list(APPEND TGFX_INCLUDES third_party/shaderc/libshaderc/include)
         list(APPEND TGFX_INCLUDES third_party/SPIRV-Cross)
-        list(APPEND TGFX_DEFINES SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS)
+        # The vendored SPIRV-Cross is built with exceptions on, so a failed MSL translation
+        # throws spirv_cross::CompilerError. Do not define SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS
+        # here: it only changes the inline header side and hides the throw from our catch.
     endif ()
 endif ()
 

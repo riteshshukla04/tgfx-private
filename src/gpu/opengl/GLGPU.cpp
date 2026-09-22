@@ -17,6 +17,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "GLGPU.h"
+#include <algorithm>
 #include "gpu/opengl/GLBuffer.h"
 #if defined(__EMSCRIPTEN__)
 #include "gpu/opengl/webgl/WebGLBuffer.h"
@@ -216,6 +217,7 @@ std::shared_ptr<Sampler> GLGPU::createSampler(const SamplerDescriptor& descripto
 
 std::shared_ptr<ShaderModule> GLGPU::createShaderModule(const ShaderModuleDescriptor& descriptor) {
   if (descriptor.code.empty()) {
+    reportError({ToRenderErrorStage(descriptor.stage), "Shader source is empty.", descriptor.code});
     LOGE("GLGPU::createShaderModule() shader code is empty!");
     return nullptr;
   }
@@ -230,6 +232,11 @@ std::shared_ptr<ShaderModule> GLGPU::createShaderModule(const ShaderModuleDescri
   }
   auto gl = interface->functions();
   auto shader = gl->createShader(shaderType);
+  if (shader == 0) {
+    reportError({ToRenderErrorStage(descriptor.stage), "OpenGL could not create a shader.",
+                 descriptor.code});
+    return nullptr;
+  }
   auto& code = descriptor.code;
   const char* files[] = {code.c_str()};
   gl->shaderSource(shader, 1, files, nullptr);
@@ -238,15 +245,18 @@ std::shared_ptr<ShaderModule> GLGPU::createShaderModule(const ShaderModuleDescri
   int success;
   gl->getShaderiv(shader, GL_COMPILE_STATUS, &success);
   if (!success) {
-    char infoLog[512];
-    gl->getShaderInfoLog(shader, 512, nullptr, infoLog);
+    int logLength = 0;
+    gl->getShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
+    std::string infoLog(static_cast<size_t>(std::max(logLength, 1)), '\0');
+    gl->getShaderInfoLog(shader, static_cast<int>(infoLog.size()), nullptr, infoLog.data());
     // The driver's info log first, and on its own line: logcat truncates a
     // record at ~4 KB, and a full shader is longer than that, so leading with
     // the source hid the one part that says what is wrong.
-    LOGE("Could not compile shader (type:%d): %s", shaderType, infoLog);
+    LOGE("Could not compile shader (type:%d): %s", shaderType, infoLog.c_str());
     LOGE("Shader source was:\n%s", code.c_str());
     gl->deleteShader(shader);
-    shader = 0;
+    reportError({ToRenderErrorStage(descriptor.stage), infoLog.c_str(), code});
+    return nullptr;
   }
 #endif
   return makeResource<GLShaderModule>(shader);
@@ -256,24 +266,29 @@ std::shared_ptr<RenderPipeline> GLGPU::createRenderPipeline(
     const RenderPipelineDescriptor& descriptor) {
   auto vertexModule = static_cast<GLShaderModule*>(descriptor.vertex.module.get());
   auto fragmentModule = static_cast<GLShaderModule*>(descriptor.fragment.module.get());
-  if (vertexModule == nullptr || vertexModule->shader() == 0 || vertexModule == nullptr ||
+  if (vertexModule == nullptr || vertexModule->shader() == 0 || fragmentModule == nullptr ||
       fragmentModule->shader() == 0) {
     LOGE("GLGPU::createRenderPipeline() invalid shader module!");
+    reportError({RenderErrorStage::Pipeline, "Invalid vertex or fragment shader module.", {}});
     return nullptr;
   }
   if (descriptor.vertex.bufferLayouts.empty()) {
+    reportError({RenderErrorStage::Pipeline, "No vertex buffer layouts are configured.", {}});
     LOGE("GLGPU::createRenderPipeline() invalid vertex attributes, no buffer layouts set!");
     return nullptr;
   }
   if (descriptor.vertex.bufferLayouts[0].stride == 0) {
+    reportError({RenderErrorStage::Pipeline, "Vertex buffer stride must be nonzero.", {}});
     LOGE("GLGPU::createRenderPipeline() invalid vertex attributes, vertex stride is 0!");
     return nullptr;
   }
   if (descriptor.fragment.colorAttachments.empty()) {
+    reportError({RenderErrorStage::Pipeline, "No color attachments are configured.", {}});
     LOGE("GLGPU::createRenderPipeline() invalid color attachments, no color attachments!");
     return nullptr;
   }
   if (descriptor.fragment.colorAttachments.size() > 1) {
+    reportError({RenderErrorStage::Pipeline, "OpenGL supports only one color attachment.", {}});
     LOGE(
         "GLGPU::createRenderPipeline() Multiple color attachments are not yet supported in "
         "OpenGL!");
@@ -281,6 +296,10 @@ std::shared_ptr<RenderPipeline> GLGPU::createRenderPipeline(
   }
   auto gl = interface->functions();
   auto programID = gl->createProgram();
+  if (programID == 0) {
+    reportError({RenderErrorStage::Pipeline, "OpenGL could not create a program.", {}});
+    return nullptr;
+  }
   gl->attachShader(programID, vertexModule->shader());
   gl->attachShader(programID, fragmentModule->shader());
   gl->linkProgram(programID);
@@ -288,15 +307,19 @@ std::shared_ptr<RenderPipeline> GLGPU::createRenderPipeline(
   int success;
   gl->getProgramiv(programID, GL_LINK_STATUS, &success);
   if (!success) {
-    char infoLog[512];
-    gl->getProgramInfoLog(programID, 512, nullptr, infoLog);
+    int logLength = 0;
+    gl->getProgramiv(programID, GL_INFO_LOG_LENGTH, &logLength);
+    std::string infoLog(static_cast<size_t>(std::max(logLength, 1)), '\0');
+    gl->getProgramInfoLog(programID, static_cast<int>(infoLog.size()), nullptr, infoLog.data());
     gl->deleteProgram(programID);
-    programID = 0;
-    LOGE("GLGPU::createRenderPipeline() Could not link program: %s", infoLog);
+    LOGE("GLGPU::createRenderPipeline() Could not link program: %s", infoLog.c_str());
+    reportError({RenderErrorStage::Pipeline, infoLog.c_str(), {}});
+    return nullptr;
   }
 #endif
   auto pipeline = makeResource<GLRenderPipeline>(programID);
   if (!pipeline->setPipelineDescriptor(this, descriptor)) {
+    reportError({RenderErrorStage::Pipeline, "OpenGL rejected the pipeline descriptor.", {}});
     return nullptr;
   }
   return pipeline;

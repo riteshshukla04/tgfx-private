@@ -20,10 +20,12 @@
 
 #include <chrono>
 #include <deque>
+#include <functional>
 #include <memory>
 #include "tgfx/gpu/Backend.h"
 #include "tgfx/gpu/Device.h"
 #include "tgfx/gpu/Recording.h"
+#include "tgfx/gpu/RenderError.h"
 
 namespace tgfx {
 class GlobalCache;
@@ -55,6 +57,14 @@ class Context {
   Context(Device* device, GPU* gpu);
 
   ~Context();
+
+  /**
+   * Replaces the shader/pipeline error callback. Pass an empty function to unregister it.
+   * Called only on failure, synchronously while this context is locked. The callback must not
+   * throw, re-enter TGFX, or change its registration. Copy the error before retaining it or
+   * forwarding it to another thread. Successful rendering does not invoke the callback.
+   */
+  void setErrorCallback(std::function<void(const RenderError&)> callback);
 
   /**
    * Returns the associated device.

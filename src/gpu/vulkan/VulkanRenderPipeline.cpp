@@ -241,6 +241,10 @@ bool VulkanRenderPipeline::createDescriptorSetLayouts(VulkanGPU* gpu,
   auto result = vkCreateDescriptorSetLayout(device, &uboLayoutInfo, nullptr, &uboSetLayout);
   if (result != VK_SUCCESS) {
     LOGE("VulkanRenderPipeline: vkCreateDescriptorSetLayout (UBO set) failed.");
+    gpu->reportError(
+        {RenderErrorStage::Pipeline,
+         "vkCreateDescriptorSetLayout (UBO) failed with VkResult " + std::to_string(result),
+         {}});
     return false;
   }
 
@@ -272,6 +276,10 @@ bool VulkanRenderPipeline::createDescriptorSetLayouts(VulkanGPU* gpu,
   result = vkCreateDescriptorSetLayout(device, &texLayoutInfo, nullptr, &textureSetLayout);
   if (result != VK_SUCCESS) {
     LOGE("VulkanRenderPipeline: vkCreateDescriptorSetLayout (texture set) failed.");
+    gpu->reportError(
+        {RenderErrorStage::Pipeline,
+         "vkCreateDescriptorSetLayout (texture) failed with VkResult " + std::to_string(result),
+         {}});
     return false;
   }
 
@@ -288,6 +296,9 @@ bool VulkanRenderPipeline::createPipelineLayout(VulkanGPU* gpu) {
   auto result = vkCreatePipelineLayout(gpu->device(), &layoutInfo, nullptr, &pipelineLayout);
   if (result != VK_SUCCESS) {
     LOGE("VulkanRenderPipeline: vkCreatePipelineLayout failed.");
+    gpu->reportError({RenderErrorStage::Pipeline,
+                      "vkCreatePipelineLayout failed with VkResult " + std::to_string(result),
+                      {}});
     return false;
   }
   return true;
@@ -303,6 +314,7 @@ bool VulkanRenderPipeline::createPipeline(VulkanGPU* gpu,
     auto vertexShader = std::static_pointer_cast<VulkanShaderModule>(descriptor.vertex.module);
     if (vertexShader->vulkanShaderModule() == VK_NULL_HANDLE) {
       LOGE("VulkanRenderPipeline: vertex shader module is invalid.");
+      gpu->reportError({RenderErrorStage::Pipeline, "Invalid vertex shader module.", {}});
       return false;
     }
     VkPipelineShaderStageCreateInfo stage = {};
@@ -317,6 +329,7 @@ bool VulkanRenderPipeline::createPipeline(VulkanGPU* gpu,
     auto fragmentShader = std::static_pointer_cast<VulkanShaderModule>(descriptor.fragment.module);
     if (fragmentShader->vulkanShaderModule() == VK_NULL_HANDLE) {
       LOGE("VulkanRenderPipeline: fragment shader module is invalid.");
+      gpu->reportError({RenderErrorStage::Pipeline, "Invalid fragment shader module.", {}});
       return false;
     }
     VkPipelineShaderStageCreateInfo stage = {};
@@ -567,6 +580,9 @@ bool VulkanRenderPipeline::createPipeline(VulkanGPU* gpu,
   auto result = vkCreateRenderPass(gpu->device(), &renderPassInfo, nullptr, &renderPass);
   if (result != VK_SUCCESS) {
     LOGE("VulkanRenderPipeline: vkCreateRenderPass failed.");
+    gpu->reportError({RenderErrorStage::Pipeline,
+                      "vkCreateRenderPass failed with VkResult " + std::to_string(result),
+                      {}});
     return false;
   }
 
@@ -596,6 +612,9 @@ bool VulkanRenderPipeline::createPipeline(VulkanGPU* gpu,
 
   if (result != VK_SUCCESS) {
     LOGE("VulkanRenderPipeline: vkCreateGraphicsPipelines failed.");
+    gpu->reportError({RenderErrorStage::Pipeline,
+                      "vkCreateGraphicsPipelines failed with VkResult " + std::to_string(result),
+                      {}});
     return false;
   }
   return true;
