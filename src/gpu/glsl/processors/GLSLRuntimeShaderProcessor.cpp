@@ -49,19 +49,6 @@ static UniformFormat FormatOf(size_t componentCount) {
   }
 }
 
-static const char* TypeOf(size_t componentCount) {
-  switch (componentCount) {
-    case 2:
-      return "vec2";
-    case 3:
-      return "vec3";
-    case 4:
-      return "vec4";
-    default:
-      return "float";
-  }
-}
-
 static bool IsWordChar(char c) {
   return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
 }
@@ -152,18 +139,18 @@ void GLSLRuntimeShaderProcessor::emitCode(EmitArgs& args) const {
     RenameIdentifier(&preamble, placeholder, childName);
     RenameIdentifier(&body, placeholder, childName);
   }
+  // Uniforms are referenced by their mangled names directly. An alias local to the
+  // entry point would be invisible to the file-scope helpers in the preamble.
+  for (size_t i = 0; i < names.size(); i++) {
+    RenameIdentifier(&preamble, source->uniforms[i].name, names[i]);
+    RenameIdentifier(&body, source->uniforms[i].name, names[i]);
+  }
   if (!preamble.empty()) {
     fragBuilder->addFunction(preamble);
   }
   // highp: the default mediump float collapses pixel-offset sampling (fp16
   // spacing exceeds 1px past 1024) and broke edge-detection shaders on GL.
-  std::string function = "vec4 " + functionName + "(highp vec2 fragCoord) {\n";
-  for (size_t i = 0; i < names.size(); i++) {
-    const auto& uniform = source->uniforms[i];
-    function +=
-        std::string(TypeOf(uniform.values.size())) + " " + uniform.name + " = " + names[i] + ";\n";
-  }
-  function += body + "\n}";
+  std::string function = "vec4 " + functionName + "(highp vec2 fragCoord) {\n" + body + "\n}";
   fragBuilder->addFunction(function);
   const auto coordName = fragBuilder->emitPerspTextCoord((*args.transformedCoords)[0]);
   fragBuilder->codeAppendf("%s = %s(%s);", args.outputColor.c_str(), functionName.c_str(),

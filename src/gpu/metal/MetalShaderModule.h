@@ -79,10 +79,7 @@ class MetalShaderModule : public ShaderModule, public MetalResource {
   MetalShaderModule(MetalGPU* gpu, const ShaderModuleDescriptor& descriptor);
   ~MetalShaderModule() override = default;
 
-  bool compileShader(id<MTLDevice> device, const shaderc::Compiler* compiler,
-                     const std::string& glslCode, ShaderStage stage);
-  std::string convertGLSLToMSL(const shaderc::Compiler* compiler, const std::string& glslCode,
-                               ShaderStage stage);
+  bool compileShader(MetalGPU* gpu, const std::string& glslCode, ShaderStage stage);
 
   id<MTLLibrary> library = nil;
   ShaderStage _stage = ShaderStage::Vertex;

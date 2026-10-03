@@ -149,13 +149,17 @@ std::shared_ptr<MetalShaderModule> MetalShaderModule::Make(
     return nullptr;
   }
 
-  return gpu->makeResource<MetalShaderModule>(gpu, descriptor);
+  auto module = gpu->makeResource<MetalShaderModule>(gpu, descriptor);
+  if (module->metalLibrary() == nil) {
+    return nullptr;
+  }
+  return module;
 }
 
 MetalShaderModule::MetalShaderModule(MetalGPU* gpu, const ShaderModuleDescriptor& descriptor)
     : _stage(descriptor.stage),
       _glslCode(descriptor.stage == ShaderStage::Fragment ? descriptor.code : std::string{}) {
-  compileShader(gpu->device(), gpu->shaderCompiler(), descriptor.code, descriptor.stage);
+  compileShader(gpu, descriptor.code, descriptor.stage);
 }
 
 void MetalShaderModule::onRelease(MetalGPU*) {
@@ -165,18 +169,28 @@ void MetalShaderModule::onRelease(MetalGPU*) {
   }
 }
 
-bool MetalShaderModule::compileShader(id<MTLDevice> device, const shaderc::Compiler* compiler,
-                                      const std::string& glslCode, ShaderStage stage) {
-  std::string mslCode = convertGLSLToMSL(compiler, glslCode, stage);
+bool MetalShaderModule::compileShader(MetalGPU* gpu, const std::string& glslCode,
+                                      ShaderStage stage) try {
+  auto compiled = CompileGLSLToSPIRV(gpu->shaderCompiler(), PreprocessGLSL(glslCode), stage);
+  if (compiled.spirv.empty()) {
+    gpu->reportError({ToRenderErrorStage(stage), std::move(compiled.error), glslCode});
+    return false;
+  }
+  std::string mslCode = convertSPIRVToMSL(compiled.spirv, stage);
   if (mslCode.empty()) {
+    gpu->reportError({ToRenderErrorStage(stage), "SPIR-V to MSL conversion failed.", glslCode});
     return false;
   }
 
   NSString* mslSource = [NSString stringWithUTF8String:mslCode.c_str()];
   NSError* error = nil;
 
-  library = [device newLibraryWithSource:mslSource options:nil error:&error];
+  library = [gpu->device() newLibraryWithSource:mslSource options:nil error:&error];
   if (!library) {
+    gpu->reportError({ToRenderErrorStage(stage),
+                      error ? error.localizedDescription.UTF8String
+                            : "Metal returned no shader library or diagnostic.",
+                      glslCode});
     if (error) {
       LOGE("Metal shader compilation error: %s", error.localizedDescription.UTF8String);
       LOGE("Original GLSL:\n%s", glslCode.c_str());
@@ -186,20 +200,13 @@ bool MetalShaderModule::compileShader(id<MTLDevice> device, const shaderc::Compi
   }
 
   return true;
-}
-
-std::string MetalShaderModule::convertGLSLToMSL(const shaderc::Compiler* compiler,
-                                                const std::string& glslCode, ShaderStage stage) {
-  std::string vulkanGLSL = PreprocessGLSL(glslCode);
-  auto spirvBinary = CompileGLSLToSPIRV(compiler, vulkanGLSL, stage);
-  if (spirvBinary.empty()) {
-    return "";
-  }
-  return convertSPIRVToMSL(spirvBinary, stage);
+} catch (const spirv_cross::CompilerError& error) {
+  gpu->reportError({ToRenderErrorStage(stage), error.what(), glslCode});
+  return false;
 }
 
 SampleMaskCompileResult CompileFragmentShaderWithSampleMask(MetalGPU* gpu,
-                                                            const std::string& glslCode) {
+                                                            const std::string& glslCode) try {
   SampleMaskCompileResult result = {};
   if (gpu == nullptr) {
     return result;
@@ -210,21 +217,24 @@ SampleMaskCompileResult CompileFragmentShaderWithSampleMask(MetalGPU* gpu,
   std::string vulkanGLSL = PreprocessGLSL(glslCode);
 
   // First pass: compile to SPIR-V and collect used specialization constant IDs.
-  auto spirvBinary = CompileGLSLToSPIRV(compiler, vulkanGLSL, stage);
-  if (spirvBinary.empty()) {
+  auto compiled = CompileGLSLToSPIRV(compiler, vulkanGLSL, stage);
+  if (compiled.spirv.empty()) {
+    gpu->reportError({ToRenderErrorStage(stage), std::move(compiled.error), glslCode});
     return result;
   }
-  auto usedIDs = collectSpecConstantIDs(spirvBinary);
+  auto usedIDs = collectSpecConstantIDs(compiled.spirv);
   result.constantID = findAvailableConstantID(usedIDs);
 
   // Second pass: inject sample mask with the chosen constant_id and re-compile.
   std::string injectedGLSL = injectSampleMask(vulkanGLSL, result.constantID);
   auto injectedSPIRV = CompileGLSLToSPIRV(compiler, injectedGLSL, stage);
-  if (injectedSPIRV.empty()) {
+  if (injectedSPIRV.spirv.empty()) {
+    gpu->reportError({ToRenderErrorStage(stage), std::move(injectedSPIRV.error), injectedGLSL});
     return result;
   }
-  std::string mslCode = convertSPIRVToMSL(injectedSPIRV, stage);
+  std::string mslCode = convertSPIRVToMSL(injectedSPIRV.spirv, stage);
   if (mslCode.empty()) {
+    gpu->reportError({ToRenderErrorStage(stage), "SPIR-V to MSL conversion failed.", injectedGLSL});
     return result;
   }
 
@@ -232,6 +242,10 @@ SampleMaskCompileResult CompileFragmentShaderWithSampleMask(MetalGPU* gpu,
   NSError* error = nil;
   result.library = [device newLibraryWithSource:mslSource options:nil error:&error];
   if (!result.library) {
+    gpu->reportError({ToRenderErrorStage(stage),
+                      error ? error.localizedDescription.UTF8String
+                            : "Metal returned no sample-mask shader library or diagnostic.",
+                      injectedGLSL});
     if (error) {
       LOGE("Metal shader compilation error (sample mask): %s",
            error.localizedDescription.UTF8String);
@@ -239,6 +253,9 @@ SampleMaskCompileResult CompileFragmentShaderWithSampleMask(MetalGPU* gpu,
     result.library = nil;
   }
   return result;
+} catch (const spirv_cross::CompilerError& error) {
+  gpu->reportError({RenderErrorStage::FragmentShader, error.what(), glslCode});
+  return {};
 }
 
 }  // namespace tgfx

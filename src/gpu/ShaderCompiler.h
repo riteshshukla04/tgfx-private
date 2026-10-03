@@ -34,9 +34,13 @@ namespace tgfx {
 /// sampler bindings, adding input/output location qualifiers, and removing precision declarations.
 std::string PreprocessGLSL(const std::string& glslCode);
 
-/// Compiles preprocessed GLSL 450 source to SPIR-V binary using shaderc. Returns an empty vector
-/// on failure.
-std::vector<uint32_t> CompileGLSLToSPIRV(const shaderc::Compiler* compiler,
-                                         const std::string& vulkanGLSL, ShaderStage stage);
+struct ShaderCompileResult {
+  std::vector<uint32_t> spirv;
+  std::string error;
+};
+
+/// Compiles preprocessed GLSL 450 source, preserving the compiler diagnostic on failure.
+ShaderCompileResult CompileGLSLToSPIRV(const shaderc::Compiler* compiler,
+                                       const std::string& vulkanGLSL, ShaderStage stage);
 
 }  // namespace tgfx

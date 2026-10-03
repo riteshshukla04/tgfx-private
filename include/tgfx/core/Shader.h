@@ -42,9 +42,10 @@ struct RuntimeShaderUniform {
 };
 
 /**
- * Source for a runtime shader. `body` is GLSL that must assign the fragment
- * result to `tgfx_runtime_color`, and may read `fragCoord` (local coordinates)
- * and any declared uniform by name. On Metal the GLSL is cross-compiled to MSL.
+ * Source for a runtime shader. `body` is GLSL that returns the fragment color
+ * as a vec4 and may read `fragCoord` (local coordinates). Any declared uniform
+ * is readable by name from `body` and from the helpers in `preamble`. On Metal
+ * the GLSL is cross-compiled to MSL.
  */
 struct RuntimeShaderSource {
   std::string body;
