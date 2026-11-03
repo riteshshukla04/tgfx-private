@@ -53,11 +53,12 @@ struct VulkanExtensions {
 
  private:
   const char* _roaaExtensionName = nullptr;
+  // Track whether promoted extensions were actually enumerated by the driver. Once promoted to
+  // core, drivers may omit them from vkEnumerateDeviceExtensionProperties. We must only include
+  // them in ppEnabledExtensionNames when they were actually enumerated, otherwise vkCreateDevice
+  // fails with VK_ERROR_EXTENSION_NOT_PRESENT.
+  bool enumeratedTimeline = false;
 #if defined(__ANDROID__)
-  // Track whether promoted-to-1.1 extensions were actually enumerated by the driver.
-  // On Vulkan 1.1+ devices, drivers may omit these from vkEnumerateDeviceExtensionProperties.
-  // We must only include them in ppEnabledExtensionNames when they were actually enumerated,
-  // otherwise vkCreateDevice fails with VK_ERROR_EXTENSION_NOT_PRESENT.
   bool enumeratedExternalMemory = false;
   bool enumeratedDedicatedAllocation = false;
   bool enumeratedYcbcr = false;

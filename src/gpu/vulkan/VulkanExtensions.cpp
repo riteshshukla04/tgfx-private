@@ -25,17 +25,18 @@ void VulkanExtensions::query(VkPhysicalDevice physicalDevice) {
   VkPhysicalDeviceProperties deviceProps = {};
   vkGetPhysicalDeviceProperties(physicalDevice, &deviceProps);
   bool isVulkan11OrLater = (deviceProps.apiVersion >= VK_API_VERSION_1_1);
+  bool isVulkan12OrLater = (deviceProps.apiVersion >= VK_API_VERSION_1_2);
 
   uint32_t extCount = 0;
   vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extCount, nullptr);
   std::vector<VkExtensionProperties> available(extCount);
   vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extCount, available.data());
 
-  // VK_KHR_timeline_semaphore, VK_KHR_external_memory, VK_KHR_dedicated_allocation, and
-  // VK_KHR_sampler_ycbcr_conversion are promoted to Vulkan 1.1 core. Drivers may omit them
-  // from the enumeration list on 1.1+ devices, so treat them as available when the device
-  // reports apiVersion >= 1.1.
-  bool hasTimeline = isVulkan11OrLater;
+  // VK_KHR_external_memory, VK_KHR_dedicated_allocation, and VK_KHR_sampler_ycbcr_conversion are
+  // promoted to Vulkan 1.1 core, VK_KHR_timeline_semaphore to Vulkan 1.2 core. Drivers may omit
+  // them from the enumeration list once promoted (the Android emulator's gfxstream driver omits
+  // VK_KHR_timeline_semaphore), so treat them as available from the promoting version on.
+  bool hasTimeline = isVulkan12OrLater;
   bool hasDynState = false;
   const char* roaaExtName = nullptr;
   bool hasSwapchain = false;
@@ -49,6 +50,7 @@ void VulkanExtensions::query(VkPhysicalDevice physicalDevice) {
   for (const auto& ext : available) {
     if (strcmp(ext.extensionName, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME) == 0) {
       hasTimeline = true;
+      enumeratedTimeline = true;
     } else if (strcmp(ext.extensionName, VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME) == 0) {
       hasDynState = true;
     } else if (strcmp(ext.extensionName, "VK_EXT_rasterization_order_attachment_access") == 0) {
@@ -159,7 +161,7 @@ std::vector<const char*> VulkanExtensions::getEnabledNames() const {
   if (swapchain) {
     names.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
   }
-  if (timelineSemaphore) {
+  if (timelineSemaphore && enumeratedTimeline) {
     names.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
   }
   if (extendedDynamicState) {
